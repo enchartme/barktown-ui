@@ -49,6 +49,18 @@ export const SAMPLE_LABEL_BY_SHORTCUT = new Map(
   SAMPLE_LABEL_DEFINITIONS.map(({ name, shortcut }) => [shortcut, name]),
 );
 
+/** Resolve a training-view label hotkey and whether it targets one fragment or the whole sample. */
+export function trainingLabelActionForShortcut(key, shiftKey = false) {
+  const shortcut = String(key).toLowerCase();
+  const label = (shiftKey ? SAMPLE_LABEL_BY_SHORTCUT : LABEL_BY_SHORTCUT).get(shortcut);
+  return label ? { label, scope: shiftKey ? 'sample' : 'fragment' } : null;
+}
+
+/** Non-note annotations that still need changing during a whole-sample relabel. */
+export function fragmentRelabelTargets(annotations, label) {
+  return annotations.filter(annotation => annotation.source !== 'note' && annotation.label !== label);
+}
+
 /** Resolve a whole-sample label hotkey and its diary-retention modifier. */
 export function sampleMoveForShortcut(key, shiftKey = false) {
   const label = SAMPLE_LABEL_BY_SHORTCUT.get(String(key).toLowerCase());

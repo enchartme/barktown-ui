@@ -11,7 +11,7 @@
     formatSampleDatetime,
     formatDate,
   } from '$lib/utils.js';
-  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, SAMPLE_LABEL_GUIDELINES as LABEL_GUIDELINES, sampleLabelColor, sampleLabelShortcut, LABEL_BY_SHORTCUT } from '$lib/sample-labels.js';
+  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, SAMPLE_LABEL_GUIDELINES as LABEL_GUIDELINES, fragmentRelabelTargets, sampleLabelColor, sampleLabelShortcut, trainingLabelActionForShortcut } from '$lib/sample-labels.js';
   import { TRAINING_COLOR_ENCODINGS, TRAINING_COLOR_GUIDES } from '$lib/training-color-guides.js';
   import {
     WAVEFORM_ZOOM_LEVELS,
@@ -20,7 +20,9 @@
     waveformBarBackingWidth,
     zoomInvariantSvgWidth,
   } from '$lib/training-waveform-zoom.js';
+  import { fragmentSelectionAfterDelete } from '$lib/training-fragment-selection.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
+  import { taggedFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
   import TrainingProjectionScatterplot from '$lib/components/TrainingProjectionScatterplot.svelte';
   import { isEmbeddedLayout } from '$lib/embed.js';
@@ -247,6 +249,8 @@
   /** @type {HTMLAudioElement|null} */
   let audioEl        = $state(null);
   let isPlaying       = $state(false);
+  let playbackMode    = $state(/** @type {'normal'|'approver'} */ ('normal'));
+  let approverRangeIndex = 0;
   let currentTime     = $state(0);
   let duration        = $state(0);
   let pendingSeekSec  = $state(/** @type {number|null} */ (null));
@@ -256,7 +260,11 @@
   $effect(() => {
     if (!isPlaying || !audioEl) return;
     let id = 0;
-    const tick = () => { currentTime = audioEl.currentTime; id = requestAnimationFrame(tick); };
+    const tick = () => {
+      currentTime = audioEl.currentTime;
+      if (playbackMode === 'approver') enforceApproverPlayback();
+      id = requestAnimationFrame(tick);
+    };
     id = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(id);
   });
@@ -321,6 +329,7 @@
   let deleteBusy    = $state(false);
   let renameBusy    = $state(false);
   let renameError   = $state('');
+  let bulkRelabelBusy = $state(false);
   let reanalyzeConfirm   = $state(false);
   let reanalyzeBusy      = $state(false);
   let reanalyzeThreshold = $state(0.9);
@@ -433,6 +442,7 @@
   const renderFragments = $derived(
     annotations.filter(a => a.source !== 'note').map(a => ({ ...a, ...previewBounds(a) }))
   );
+  const approverRanges = $derived(taggedFragmentRanges(annotations, { startSec: 0, endSec: duration }));
   // Sample-wide notes (startSec === endSec === 0) have no meaningful position
   // on the timeline, so they're only shown in the Notes panel, not marked here.
   const renderNotes = $derived(annotations.filter(a => a.source === 'note' && !isSampleWideNote(a)));
@@ -525,6 +535,8 @@
     if (reanalyzeBusy) return;
     if (audioEl && isPlaying) audioEl.pause();
     isPlaying      = false;
+    playbackMode   = 'normal';
+    approverRangeIndex = 0;
     currentTime    = 0;
     duration       = sample.durationSec || 0;
     pendingSeekSec = seekSec;
@@ -557,6 +569,8 @@
     if (reanalyzeBusy) return;
     if (audioEl && isPlaying) audioEl.pause();
     isPlaying        = false;
+    playbackMode     = 'normal';
+    approverRangeIndex = 0;
     currentTime      = 0;
     duration         = 0;
     pendingSeekSec   = null;
@@ -648,7 +662,49 @@
   async function togglePlay() {
     if (!audioEl) return;
     if (isPlaying) audioEl.pause();
-    else await audioEl.play().catch(() => {});
+    else {
+      playbackMode = 'normal';
+      await audioEl.play().catch(() => {});
+    }
+  }
+
+  function enforceApproverPlayback() {
+    if (!audioEl) return;
+    const ranges = approverRanges;
+    const step = taggedPlaybackStep(ranges, audioEl.currentTime, approverRangeIndex);
+    if (step.type === 'keep') {
+      approverRangeIndex = step.index;
+      return;
+    }
+    if (step.type === 'finished') {
+      audioEl.pause();
+      approverRangeIndex = 0;
+      const restartTime = ranges[0]?.startSec ?? 0;
+      audioEl.currentTime = restartTime;
+      currentTime = restartTime;
+      return;
+    }
+    approverRangeIndex = step.index;
+    audioEl.currentTime = step.time;
+    currentTime = step.time;
+  }
+
+  async function toggleApproverPlay() {
+    if (!editingAccess || !audioEl || approverRanges.length === 0) return;
+    if (isPlaying && playbackMode === 'approver') {
+      audioEl.pause();
+      return;
+    }
+
+    playbackMode = 'approver';
+    approverRangeIndex = taggedRangeIndexAtOrAfter(approverRanges, audioEl.currentTime);
+    if (approverRangeIndex < 0) approverRangeIndex = 0;
+    const range = approverRanges[approverRangeIndex];
+    if (audioEl.currentTime < range.startSec || audioEl.currentTime >= range.endSec) {
+      audioEl.currentTime = range.startSec;
+      currentTime = range.startSec;
+    }
+    if (!isPlaying) await audioEl.play().catch(() => {});
   }
 
   // ── Waveform pointer interaction ───────────────────────────────────────────
@@ -812,7 +868,7 @@
   }
 
   async function relabelSelected(newLabel) {
-    if (!editingAccess || reanalyzeBusy) return;
+    if (!editingAccess || reanalyzeBusy || bulkRelabelBusy) return;
     const ann = annotations.find(a => a.id === selectedAnnId);
     if (!ann) return;
     mutationError = '';
@@ -905,6 +961,9 @@
     if (!editingAccess || reanalyzeBusy) return;
     const ann = annotations.find(a => a.id === annId);
     if (!ann) return;
+    const replacementAnnId = ann.source === 'note'
+      ? null
+      : fragmentSelectionAfterDelete(annotations, ann.id);
     mutationError = '';
     try {
       const res = await fetch(`${PRIVATE_API_BASE}/api/annotations/${ann.id}`, {
@@ -912,7 +971,9 @@
       });
       if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
       annotations = annotations.filter(a => a.id !== ann.id);
-      if (selectedAnnId === ann.id) selectedAnnId = null;
+      // Only advance if this fragment is still selected. The reviewer may
+      // have selected something else while the delete request was in flight.
+      if (selectedAnnId === ann.id) selectedAnnId = replacementAnnId;
       if (editingNoteId === ann.id) editingNoteId = null;
       if (isSampleWideNote(ann)) setSampleNotePreview(ann.sampleId, null);
       else syncSampleFragmentsFromAnnotations();
@@ -993,7 +1054,7 @@
   }
 
   async function changeCategory(newLabel) {
-    if (!editingAccess || reanalyzeBusy || !selected || newLabel === selected.label) return;
+    if (!editingAccess || reanalyzeBusy || bulkRelabelBusy || !selected || newLabel === selected.label) return;
     renameBusy  = true;
     renameError = '';
     try {
@@ -1016,6 +1077,79 @@
       renameError = e?.message ?? 'Failed to change category';
     } finally {
       renameBusy = false;
+    }
+  }
+
+  /** Shift + a label hotkey reclassifies every fragment in the open sample,
+   * then changes the sample category. Notes are deliberately left alone. */
+  async function relabelAllFragmentsAndSample(newLabel) {
+    if (!editingAccess || !selected || reanalyzeBusy || renameBusy || bulkRelabelBusy || !LABELS.includes(newLabel)) return;
+
+    const sample = selected;
+    const fragments = fragmentRelabelTargets(annotations, newLabel);
+    bulkRelabelBusy = true;
+    mutationError = '';
+    renameError = '';
+
+    try {
+      // Wait for every request to settle so recovery does not race requests
+      // that are still updating other fragments.
+      const results = await Promise.allSettled(fragments.map(async (ann) => {
+        const res = await fetch(`${PRIVATE_API_BASE}/api/annotations/${ann.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: newLabel }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+        return data;
+      }));
+
+      const updatedById = new Map();
+      let updateError = null;
+      for (const result of results) {
+        if (result.status === 'fulfilled') updatedById.set(result.value.id, result.value);
+        else updateError ??= result.reason;
+      }
+      if (selected?.id === sample.id && updatedById.size > 0) {
+        annotations = annotations.map(a => updatedById.get(a.id) ?? a);
+        syncSampleFragmentsFromAnnotations();
+      }
+      if (updateError) throw updateError;
+
+      if (sample.label !== newLabel) {
+        const res = await fetch(`${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(sample.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: newLabel }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+        samples = samples.map(s => s.id === sample.id ? data : s);
+
+        if (selected?.id === sample.id) {
+          if (audioEl && isPlaying) audioEl.pause();
+          isPlaying = false;
+          currentTime = 0;
+          selected = data;
+          waveData = null;
+          history.replaceState(null, '', '#' + data.id);
+          await Promise.all([loadWaveform(data.waveformPath), fetchAnnotations(data.id)]);
+        }
+      }
+
+      void fetchSidebarAnnotationSummary();
+    } catch (e) {
+      mutationError = e?.message ?? 'Failed to update all fragments and the sample label';
+      // Bulk updates can partially succeed. Refresh the still-open sample so
+      // the UI reflects the server and retrying only applies missing changes.
+      if (selected?.id === sample.id) await fetchAnnotations(sample.id);
+      void fetchSamples();
+      void fetchSidebarAnnotationSummary();
+    } finally {
+      bulkRelabelBusy = false;
     }
   }
 
@@ -1042,7 +1176,7 @@
       if (pending) { pending = null; return; }
       if (selectedAnnId != null) { selectedAnnId = null; return; }
     }
-    if (reanalyzeConfirm || reanalyzeBusy) return;
+    if (reanalyzeConfirm || reanalyzeBusy || bulkRelabelBusy) return;
     if (editingAccess && !inField && (e.key === 'Delete' || e.key === 'Backspace') && selectedAnnId != null) {
       e.preventDefault();
       deleteSelectedAnnotation();
@@ -1051,9 +1185,12 @@
       e.preventDefault();
       commitFragment();
     }
-    if (!inField && e.key === ' ') {
+    if (!inField && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === ' ') {
       e.preventDefault();
-      togglePlay();
+      if (!e.repeat) {
+        if (e.shiftKey) void toggleApproverPlay();
+        else void togglePlay();
+      }
     }
     if (!inField && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'q' || e.key === 'w')) {
       e.preventDefault();
@@ -1063,19 +1200,23 @@
       e.preventDefault();
       selectAdjacentFragment(e.key === 'ArrowRight' ? 1 : -1);
     }
-    // Label shortcuts: classify a pending fragment or relabel the selected one.
+    // Label shortcuts: Shift applies valid sample labels to every fragment and
+    // the sample itself; without Shift, classify/relabel one fragment as before.
     if (editingAccess && !inField && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const labelForKey = LABEL_BY_SHORTCUT.get(e.key);
-      if (labelForKey) {
+      const action = trainingLabelActionForShortcut(e.key, e.shiftKey);
+      if (action?.scope === 'sample' && selected) {
+        e.preventDefault();
+        void relabelAllFragmentsAndSample(action.label);
+      } else if (action?.scope === 'fragment') {
         if (pending) {
           e.preventDefault();
-          pendingLabel = labelForKey;
-          commitFragment();
+          pendingLabel = action.label;
+          void commitFragment();
         } else if (selectedAnnId != null) {
           const ann = annotations.find(a => a.id === selectedAnnId);
           if (ann && ann.source !== 'note') {
             e.preventDefault();
-            relabelSelected(labelForKey);
+            void relabelSelected(action.label);
           }
         }
       }
@@ -1314,7 +1455,7 @@
           {#if editingAccess}
             <label class="category-control">
               <span>Category</span>
-              <select value={selected.label} disabled={renameBusy || reanalyzeBusy} onchange={(e) => changeCategory(e.currentTarget.value)}>
+              <select value={selected.label} disabled={renameBusy || reanalyzeBusy || bulkRelabelBusy} onchange={(e) => changeCategory(e.currentTarget.value)}>
                 {#each LABELS as lbl}
                   <option value={lbl}>{lbl}</option>
                 {/each}
@@ -1323,14 +1464,14 @@
 
             <button
               class="reanalyze-btn"
-              disabled={reanalyzeBusy || renameBusy || deleteBusy}
+              disabled={reanalyzeBusy || renameBusy || deleteBusy || bulkRelabelBusy}
               onclick={openReanalyzeConfirm}
               title="Replace bark, review, and yap fragments using the current classifier"
             >{reanalyzeBusy ? 'Analyzing…' : 'Re-analyze'}</button>
 
             <button
               class="danger-btn"
-              disabled={reanalyzeBusy}
+              disabled={reanalyzeBusy || bulkRelabelBusy}
               onclick={() => { reanalyzeConfirm = false; deleteConfirm = true; }}
             >Delete sample</button>
           {/if}
@@ -1338,6 +1479,7 @@
 
         {#if editingAccess && renameError}<div class="error-msg">{renameError}</div>{/if}
         {#if editingAccess && reanalyzeError}<div class="error-msg">{reanalyzeError}</div>{/if}
+        {#if editingAccess && bulkRelabelBusy}<div class="bulk-relabel-status" role="status">Updating every fragment and the sample label…</div>{/if}
 
         {#if editingAccess && deleteConfirm}
           <div class="confirm-bar">
@@ -1373,7 +1515,14 @@
           src={audioSrc(selected)}
           onplay={() => (isPlaying = true)}
           onpause={() => (isPlaying = false)}
-          onended={() => (isPlaying = false)}
+          onended={() => {
+            isPlaying = false;
+            if (playbackMode === 'approver' && approverRanges.length > 0 && audioEl) {
+              approverRangeIndex = 0;
+              audioEl.currentTime = approverRanges[0].startSec;
+              currentTime = approverRanges[0].startSec;
+            }
+          }}
           ontimeupdate={() => { if (audioEl) currentTime = audioEl.currentTime; }}
           onloadedmetadata={() => {
             if (audioEl) {
@@ -1384,7 +1533,22 @@
         ></audio>
 
         <div class="player-controls">
-          <button class="play-pause-btn" onclick={togglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+          <button class="play-pause-btn" onclick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? '⏸' : '▶'}</button>
+          {#if editingAccess}
+            <button
+              class="approver-play-btn"
+              class:active={playbackMode === 'approver'}
+              onclick={toggleApproverPlay}
+              disabled={annotationsLoading || approverRanges.length === 0}
+              aria-label={isPlaying && playbackMode === 'approver' ? 'Pause approver listening' : 'Play tagged fragments only'}
+              aria-pressed={playbackMode === 'approver'}
+              title={annotationsLoading
+                ? 'Loading tagged fragments…'
+                : approverRanges.length === 0
+                  ? 'No tagged fragments to play'
+                  : 'Approver listening: play tagged fragments only (Shift+Space)'}
+            >{isPlaying && playbackMode === 'approver' ? '⏸' : '▶┊▶'}</button>
+          {/if}
           <span class="mini-time">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
           {#if editingAccess}
             <span class="hint">Drag on the waveform to select a fragment · click a fragment to edit it · Delete removes the selection</span>
@@ -1590,7 +1754,7 @@
         {/if}
 
         {#if editingAccess}
-          <div class="shortcuts-hint">Use shortcuts! [Space] Play/Pause · [+][−][0] Zoom · [Delete] Remove fragment · [↑][↓] or [Q][W] Navigate · [←][→] Focus fragment · [Enter] Apply · see also the hotkeys for every label</div>
+          <div class="shortcuts-hint">Use shortcuts! [Space] Play/Pause · [Shift]+[Space] Tagged fragments only · [+][−][0] Zoom · [Delete] Remove fragment · [↑][↓] or [Q][W] Navigate · [←][→] Focus fragment · [Enter] Apply · [Shift]+[label] Relabel all fragments + sample</div>
         {/if}
 
         {#if editingAccess && pending}
@@ -2129,6 +2293,24 @@
     flex-shrink: 0;
   }
   .play-pause-btn:hover { opacity: 0.8; }
+  .approver-play-btn {
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    border: 1px solid #b8b8b2;
+    border-radius: 50%;
+    background: transparent;
+    color: #777;
+    font-family: var(--font-tiny);
+    font-size: 8px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  .approver-play-btn:hover:not(:disabled),
+  .approver-play-btn.active { border-color: #666; color: #333; opacity: 1; }
+  .approver-play-btn:disabled { cursor: default; opacity: 0.25; }
   .mini-time { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #666; font-variant-numeric: tabular-nums; flex-shrink: 0; }
   .hint { flex: 1 1 18rem; font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; }
   .player-tool-controls {
@@ -2337,6 +2519,7 @@
   .note-delete-btn:hover { opacity: 0.7; }
   .notes-empty { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; padding: 0.2rem 0; }
   .shortcuts-hint { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; margin-top: 0.6rem; line-height: 1.5; }
+  .bulk-relabel-status { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #666; margin: 0.45rem 0; }
 
   /* ── Out-of-bounds fragments panel ── */
   .oob-panel {

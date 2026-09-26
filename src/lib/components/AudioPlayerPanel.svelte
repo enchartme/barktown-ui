@@ -5,6 +5,7 @@
   import { recordingComment } from '$lib/recording-comments.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
+  import { hitMetadataFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
   import {
     SAMPLE_LABELS,
     sampleLabelColor,
@@ -65,6 +66,8 @@
 
   // ── Playback state ─────────────────────────────────────────────────────────
   let isPlaying   = $state(false);
+  let playbackMode = $state(/** @type {'normal'|'approver'} */ ('normal'));
+  let approverRangeIndex = 0;
   let currentTime = $state(0);
   let duration    = $state(0);
 
@@ -80,7 +83,6 @@
   const waveformCurrentTime = $derived(
     Math.max(0, Math.min(waveformDuration, currentTime - waveformStartMs / 1000)),
   );
-
   // rAF-based playhead: sample audioEl.currentTime at ~60 fps while playing so
   // the playhead moves smoothly. ontimeupdate (~4 Hz) stays as a seek fallback.
   $effect(() => {
@@ -88,7 +90,9 @@
     let id = 0;
     const tick = () => {
       currentTime = audioEl.currentTime;
-      if (currentTime >= trimBounds.stopSec - 0.01) {
+      if (playbackMode === 'approver') {
+        enforceApproverPlayback();
+      } else if (currentTime >= trimBounds.stopSec - 0.01) {
         audioEl.pause();
         audioEl.currentTime = trimBounds.startSec;
         currentTime = trimBounds.startSec;
@@ -261,12 +265,18 @@
     currentTime = trimBounds.startSec;
     duration    = audioEl?.duration || entry.durationSec || 0;
     isPlaying   = false;
+    playbackMode = 'normal';
+    approverRangeIndex = 0;
   });
 
   // ── Hit metadata (bark timestamps + confidence + loudness from goblin) ────
   const hitMetadata = $derived($hitMetadataById.get(entry.id) ?? null);
   const visibleHitMetadata = $derived(trimHitMetadata(hitMetadata, entry));
   const waveformHitMetadata = $derived(editingAccess ? hitMetadata : visibleHitMetadata);
+  const approverRanges = $derived(hitMetadataFragmentRanges(hitMetadata, {
+    startSec: trimBounds.startSec,
+    endSec: trimBounds.stopSec,
+  }));
   // Hit whose confidence/loudness labels are shown — only on hover, since
   // they'd otherwise overlap when hits are close together.
   let hoveredHitIndex = $state(/** @type {number|null} */ (null));
@@ -360,12 +370,52 @@
     if (isPlaying) {
       audioEl.pause();
     } else {
+      playbackMode = 'normal';
       if (audioEl.currentTime < trimBounds.startSec || audioEl.currentTime >= trimBounds.stopSec - 0.01) {
         audioEl.currentTime = trimBounds.startSec;
         currentTime = trimBounds.startSec;
       }
       audioEl.play().catch(() => {}); // ignore AbortError on rapid toggling
     }
+  }
+
+  function enforceApproverPlayback() {
+    if (!audioEl) return;
+    const ranges = approverRanges;
+    const step = taggedPlaybackStep(ranges, audioEl.currentTime, approverRangeIndex);
+    if (step.type === 'keep') {
+      approverRangeIndex = step.index;
+      return;
+    }
+    if (step.type === 'finished') {
+      audioEl.pause();
+      approverRangeIndex = 0;
+      const restartTime = ranges[0]?.startSec ?? trimBounds.startSec;
+      audioEl.currentTime = restartTime;
+      currentTime = restartTime;
+      return;
+    }
+    approverRangeIndex = step.index;
+    audioEl.currentTime = step.time;
+    currentTime = step.time;
+  }
+
+  async function toggleApproverPlay() {
+    if (!editingAccess || !audioEl || approverRanges.length === 0) return;
+    if (isPlaying && playbackMode === 'approver') {
+      audioEl.pause();
+      return;
+    }
+
+    playbackMode = 'approver';
+    approverRangeIndex = taggedRangeIndexAtOrAfter(approverRanges, audioEl.currentTime);
+    if (approverRangeIndex < 0) approverRangeIndex = 0;
+    const range = approverRanges[approverRangeIndex];
+    if (audioEl.currentTime < range.startSec || audioEl.currentTime >= range.endSec) {
+      audioEl.currentTime = range.startSec;
+      currentTime = range.startSec;
+    }
+    if (!isPlaying) await audioEl.play().catch(() => {});
   }
 
   // Pause playback when close is triggered so audio doesn't continue in the background.
@@ -748,14 +798,18 @@
   function handlePause() { isPlaying = false; }
   function handleEnded() {
     isPlaying = false;
-    currentTime = trimBounds.startSec;
-    if (audioEl) audioEl.currentTime = trimBounds.startSec;
+    const restartTime = playbackMode === 'approver' && approverRanges.length > 0
+      ? approverRanges[0].startSec
+      : trimBounds.startSec;
+    approverRangeIndex = 0;
+    currentTime = restartTime;
+    if (audioEl) audioEl.currentTime = restartTime;
   }
 
   function handleTimeUpdate() {
     if (!audioEl) return;
     currentTime = audioEl.currentTime;
-    if (currentTime >= trimBounds.stopSec - 0.01 && trimBounds.stopSec < duration - 0.01) {
+    if (playbackMode !== 'approver' && currentTime >= trimBounds.stopSec - 0.01 && trimBounds.stopSec < duration - 0.01) {
       audioEl.pause();
       audioEl.currentTime = trimBounds.startSec;
       currentTime = trimBounds.startSec;
@@ -895,9 +949,12 @@
       const panelButton = tag === 'BUTTON' && (
         playerPanelEl?.contains(target) || target?.closest('.sample-picker')
       );
-      if (!inField && !panelButton) {
+      if (!inField && withoutCommandModifier && (e.shiftKey || !panelButton)) {
         e.preventDefault(); // prevent page scroll
-        togglePlay();
+        if (!e.repeat) {
+          if (e.shiftKey) void toggleApproverPlay();
+          else void togglePlay();
+        }
       }
     }
   }
@@ -1321,6 +1378,21 @@
         </svg>
       {/if}
     </button>
+    {#if editingAccess}
+      <button
+        class="approver-play-btn"
+        class:active={playbackMode === 'approver'}
+        onclick={toggleApproverPlay}
+        disabled={!hitMetadata || approverRanges.length === 0}
+        aria-label={isPlaying && playbackMode === 'approver' ? 'Pause approver listening' : 'Play tagged fragments only'}
+        aria-pressed={playbackMode === 'approver'}
+        title={!hitMetadata
+          ? 'Loading tagged fragments…'
+          : approverRanges.length === 0
+            ? 'No tagged fragments to play'
+            : 'Approver listening: play tagged fragments only (Shift+Space)'}
+      >{isPlaying && playbackMode === 'approver' ? '⏸' : '▶┊▶'}</button>
+    {/if}
   </div>
 
   <!-- ── Volume control ── -->
@@ -1402,6 +1474,7 @@
 
     <dl class="shortcut-list">
       <div><dt><kbd>Space</kbd></dt><dd>Play or pause</dd></div>
+      <div><dt><kbd>Shift</kbd> + <kbd>Space</kbd></dt><dd>Play tagged fragments only</dd></div>
       <div><dt><kbd>Esc</kbd></dt><dd>Close this sheet, another dialog, or the player</dd></div>
       <div><dt><kbd>↑</kbd> <span>or</span> <kbd>Q</kbd></dt><dd>Previous recording</dd></div>
       <div><dt><kbd>↓</kbd> <span>or</span> <kbd>W</kbd></dt><dd>Next recording</dd></div>
@@ -2038,6 +2111,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.65rem;
   }
 
   .play-btn {
@@ -2056,6 +2130,24 @@
   .play-btn:hover   { background: #333; }
   .play-btn:active  { transform: scale(0.94); }
   .play-btn:disabled { background: #ccc; cursor: default; }
+
+  .approver-play-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #b8b8b2;
+    border-radius: 50%;
+    background: transparent;
+    color: #777;
+    font-family: var(--font-tiny);
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.65;
+  }
+  .approver-play-btn:hover:not(:disabled),
+  .approver-play-btn.active { border-color: #666; color: #333; opacity: 1; }
+  .approver-play-btn:disabled { cursor: default; opacity: 0.25; }
 
   /* ── Volume row ── */
   .volume-row {
