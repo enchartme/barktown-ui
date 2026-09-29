@@ -734,6 +734,29 @@
     }
   }
 
+  async function clearComment() {
+    if (!editingAccess || !visibleComment || commentSaving) return;
+    commentSaving = true;
+    commentError = '';
+    try {
+      const res = await fetch(`${PRIVATE_API_BASE}/api/diary/${encodeURIComponent(entry.id)}/comment`, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(8000),
+      });
+      const annotations = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(annotations?.error ?? `HTTP ${res.status}`);
+      if (!Array.isArray(annotations)) throw new Error('Comment response has an invalid shape');
+      savedComment = '';
+      commentDraft = '';
+      commentEditing = false;
+      oncommentchange?.(entry, annotations);
+    } catch (e) {
+      commentError = e?.message ?? 'Failed to clear comment';
+    } finally {
+      commentSaving = false;
+    }
+  }
+
   function handleReanalyzeClick() {
     if (!editingAccess || reanalyzeLoading || !entry.reanalyzable) return;
     if (reportShortcutsEnabled) {
@@ -1029,7 +1052,7 @@
           <span>t {reanalyzeThreshold.toFixed(2)}</span>
           <input
             type="range"
-            min="0.9"
+            min="0.8"
             max="1"
             step="0.01"
             bind:value={reanalyzeThreshold}
@@ -1114,6 +1137,9 @@
       <button class="comment-save" type="submit" disabled={!commentDraft.trim() || commentSaving}>
         {commentSaving ? 'Saving…' : 'Save'}
       </button>
+      {#if visibleComment}
+        <button class="comment-clear" type="button" onclick={clearComment} disabled={commentSaving}>Clear</button>
+      {/if}
       <button class="comment-cancel" type="button" onclick={cancelCommentEdit} disabled={commentSaving}>Cancel</button>
     </form>
   {:else if editingAccess}
@@ -1648,6 +1674,7 @@
   }
   .comment-input:focus { outline: 2px solid #4a7cdc; outline-offset: 1px; }
   .comment-save,
+  .comment-clear,
   .comment-cancel {
     border: 1px solid #c8c8c3;
     border-radius: 5px;
@@ -1659,7 +1686,9 @@
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
   }
   .comment-save { border-color: #2255bb; background: #2255bb; color: #fff; }
+  .comment-clear { border-color: #d9aaa5; color: #a33a30; }
   .comment-save:disabled,
+  .comment-clear:disabled,
   .comment-cancel:disabled { cursor: default; opacity: 0.5; }
   .panel-analysis {
     margin: -0.45rem 0 0;

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   FRAGMENT_LABELS,
   SAMPLE_LABELS,
+  filterTrainingSamples,
   fragmentRelabelTargets,
   sampleLabelColor,
   sampleMoveForShortcut,
@@ -44,4 +45,21 @@ test('whole-sample relabel targets every fragment that needs changing but never 
   ];
 
   assert.deepEqual(fragmentRelabelTargets(annotations, 'wind'), [annotations[0]]);
+});
+
+test('training review filter selects samples containing review fragments', () => {
+  const samples = [
+    { id: 'a', label: 'bark' },
+    { id: 'b', label: 'background' },
+    { id: 'c', label: 'bark' },
+  ];
+  const fragments = new Map([
+    ['a', [{ label: 'bark' }, { label: 'review' }]],
+    ['b', [{ label: 'bark' }]],
+    ['c', []],
+  ]);
+
+  assert.deepEqual(filterTrainingSamples(samples, 'review', fragments), [samples[0]]);
+  assert.deepEqual(filterTrainingSamples(samples, 'unmarked', fragments), [samples[2]]);
+  assert.deepEqual(filterTrainingSamples(samples, 'bark', fragments), [samples[0], samples[2]]);
 });

@@ -38,6 +38,16 @@ test('sample-wide DB notes override a manual filename comment', () => {
   assert.equal(recordingComment(entry), 'Database comment');
 });
 
+test('an explicitly cleared DB note suppresses a manual filename comment', () => {
+  const entry = {
+    filename: '2022-02-04 13-08-00 filename comment.aac',
+    annotations: [{ source: 'note', startSec: 0, endSec: 0, label: '' }],
+  };
+
+  assert.deepEqual(recordingCommentLabels(entry), []);
+  assert.equal(recordingComment(entry), '');
+});
+
 test('automatic and sample comments only use sample-wide notes', () => {
   const automatic = {
     filename: '2026-08-01 05-49-56 -A-.wav',

@@ -61,6 +61,20 @@ export function fragmentRelabelTargets(annotations, label) {
   return annotations.filter(annotation => annotation.source !== 'note' && annotation.label !== label);
 }
 
+/** Filter the training sidebar by sample label or fragment-derived review state. */
+export function filterTrainingSamples(samples, filterLabel, sampleFragments) {
+  if (filterLabel === 'all') return samples;
+  if (filterLabel === 'unmarked') {
+    return samples.filter((sample) => (sampleFragments.get(sample.id) ?? []).length === 0);
+  }
+  if (filterLabel === 'review') {
+    return samples.filter((sample) =>
+      (sampleFragments.get(sample.id) ?? []).some((fragment) => fragment.label === 'review')
+    );
+  }
+  return samples.filter((sample) => sample.label === filterLabel);
+}
+
 /** Resolve a whole-sample label hotkey and its diary-retention modifier. */
 export function sampleMoveForShortcut(key, shiftKey = false) {
   const label = SAMPLE_LABEL_BY_SHORTCUT.get(String(key).toLowerCase());

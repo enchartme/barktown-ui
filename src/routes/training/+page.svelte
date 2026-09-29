@@ -11,16 +11,32 @@
     formatSampleDatetime,
     formatDate,
   } from '$lib/utils.js';
-  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, SAMPLE_LABEL_GUIDELINES as LABEL_GUIDELINES, fragmentRelabelTargets, sampleLabelColor, sampleLabelShortcut, trainingLabelActionForShortcut } from '$lib/sample-labels.js';
+  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, SAMPLE_LABEL_GUIDELINES as LABEL_GUIDELINES, filterTrainingSamples, fragmentRelabelTargets, sampleLabelColor, sampleLabelShortcut, trainingLabelActionForShortcut } from '$lib/sample-labels.js';
   import { TRAINING_COLOR_ENCODINGS, TRAINING_COLOR_GUIDES } from '$lib/training-color-guides.js';
   import {
-    WAVEFORM_ZOOM_LEVELS,
+    FIT_WAVEFORM_SECONDS_PER_PIXEL,
+    MIN_WAVEFORM_SECONDS_PER_PIXEL,
     centeredWaveformScrollLeft,
-    stepWaveformZoom,
+    formatWaveformSecondsPerPixel,
+    stepWaveformSecondsPerPixel,
     waveformBarBackingWidth,
+    waveformContentWidth,
+    waveformFitSecondsPerPixel,
+    waveformRangeScrollLeft,
+    waveformZoomScale,
     zoomInvariantSvgWidth,
   } from '$lib/training-waveform-zoom.js';
   import { fragmentSelectionAfterDelete } from '$lib/training-fragment-selection.js';
+  import { loadTrainingProjectionPoints } from '$lib/training-projection-data.js';
+  import {
+    WINDOW_REVIEW_ACTIONS,
+    deriveWindowReviewSuggestionQueues,
+    formatWindowReviewSummary,
+    matchWindowReviewQueues,
+    mergeWindowReviewAnnotations,
+    withLingeringWindowReviewCandidate,
+    windowConfidenceBarSegments,
+  } from '$lib/training-window-review.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
   import { taggedFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
@@ -33,7 +49,7 @@
   //
   // masmopi (Pi 5, ingestion + API host), NOT gawblen (Pi 3B+, mic capture
   // only — gawblen just uploads to masmopi and has no ingest API of its own).
-  const ALL_LABELS = ['all', ...LABELS, 'unmarked'];
+  const ALL_LABELS = ['all', ...LABELS, 'review', 'unmarked'];
   const NOTE_COLOR = '#f1c40f';
   const embedded = $derived(isEmbeddedLayout(page.url.searchParams));
 
@@ -48,6 +64,17 @@
   // Drags shorter than this (in seconds) are treated as a plain seek click
   // rather than a fragment brush-selection.
   const BRUSH_MIN_SEC = 0.05;
+  const WINDOW_REVIEW_TABS = Object.freeze([
+    Object.freeze({ id: 'contrast', label: 'Contrast' }),
+    Object.freeze({ id: 'lowConfidence', label: 'Low C' }),
+    Object.freeze({ id: 'suspect', label: 'Suspect' }),
+    Object.freeze({ id: 'kept', label: 'Kept' }),
+  ]);
+  const WINDOW_REVIEW_KIND_ICONS = Object.freeze({
+    'low-confidence': '↓',
+    suspect: '⚠',
+    kept: '✓',
+  });
 
   // ── Sample list state ──────────────────────────────────────────────────────
   /** @type {any[]} */
@@ -55,10 +82,26 @@
   let samplesLoading  = $state(false);
   let samplesError    = $state('');
   let filterLabel     = $state('all');
+  let samplesSidebarCollapsed = $state(false);
+  let windowReviewSidebarCollapsed = $state(true);
   let hoveredCorpusLabel = $state(/** @type {string|null} */ (null));
   let pinnedCorpusLabel = $state(/** @type {string|null} */ (null));
   let hoveredSidebarSampleId = $state(/** @type {string|null} */ (null));
   let selectedColorEncoding = $state('label');
+  /** @type {any[]} */
+  let projectionPoints = $state.raw([]);
+  let projectionReviewError = $state('');
+  /** @type {any[]} */
+  let allAnnotations = $state.raw([]);
+  let windowReviewTab = $state('contrast');
+  /** @type {string|null} */
+  let focusedReviewKey = $state(null);
+  /** @type {string|null} */
+  let appliedReviewKey = $state(null);
+  /** @type {{ candidate: any, index: number, tab: string }|null} */
+  let lingeringWindowReview = $state.raw(null);
+  let windowReviewBusy = $state(false);
+  let windowReviewError = $state('');
   /** @type {Map<string, number>} */
   let windowCountsByLabel = $state(new Map());
   /** @type {Map<string, number[]>} */
@@ -69,12 +112,32 @@
   const activeCorpusLabel = $derived(hoveredCorpusLabel ?? pinnedCorpusLabel);
   const selectedColorGuide = $derived(TRAINING_COLOR_GUIDES[selectedColorEncoding] ?? TRAINING_COLOR_GUIDES.label);
   const selectedColorDomain = $derived(colorDomainsByEncoding.get(selectedColorEncoding) ?? null);
-
-  const filteredSamples = $derived(
-    filterLabel === 'all'      ? samples :
-    filterLabel === 'unmarked' ? samples.filter(s => (sampleFragments.get(s.id) ?? []).length === 0) :
-    samples.filter(s => s.label === filterLabel)
+  const windowReviewSuggestionQueues = $derived(
+    deriveWindowReviewSuggestionQueues(projectionPoints)
   );
+  const windowReviewQueues = $derived(
+    matchWindowReviewQueues(windowReviewSuggestionQueues, allAnnotations)
+  );
+  const windowReviewCandidates = $derived(
+    windowReviewQueues[windowReviewTab] ?? []
+  );
+  const activeLingeringWindowReview = $derived(
+    lingeringWindowReview?.tab === windowReviewTab ? lingeringWindowReview : null
+  );
+  const visibleWindowReviewCandidates = $derived(
+    withLingeringWindowReviewCandidate(windowReviewCandidates, activeLingeringWindowReview)
+  );
+  const focusedReviewCandidate = $derived(
+    visibleWindowReviewCandidates.find(candidate => candidate.reviewKey === focusedReviewKey) ?? null
+  );
+  const focusedWindowReviewApplied = $derived(
+    appliedReviewKey != null && appliedReviewKey === focusedReviewKey
+  );
+  const focusedReviewTargetWindow = $derived(
+    focusedReviewCandidate?.targetWindow ?? null
+  );
+
+  const filteredSamples = $derived(filterTrainingSamples(samples, filterLabel, sampleFragments));
 
   // Corpus-wide counts per label, for the summary shown when nothing is
   // selected -- lets you check progress against the benchmarks in
@@ -194,6 +257,7 @@
       const res = await fetch(`${PUBLIC_API_BASE}/api/annotations`, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return;
       const rows = await res.json();
+      allAnnotations = rows.filter(annotation => annotation.source !== 'note');
       const notes = new Map();
       const frags = new Map();
       for (const r of rows) {
@@ -241,6 +305,9 @@
     const map = new Map(sampleFragments);
     map.set(selected.id, frags);
     sampleFragments = map;
+
+    const nextAllAnnotations = mergeWindowReviewAnnotations(allAnnotations, selected.id, annotations);
+    if (nextAllAnnotations !== allAnnotations) allAnnotations = nextAllAnnotations;
   }
 
   // ── Player / selection state ───────────────────────────────────────────────
@@ -282,7 +349,10 @@
   let waveWrapEl       = $state(null);
   /** @type {HTMLDivElement|null} */
   let waveScrollEl     = $state(null);
-  let waveZoom         = $state(1);
+  let waveViewportWidth = $state(0);
+  // Zero means FIT. A non-zero value is an absolute timeline scale and is
+  // deliberately retained when another sample is opened.
+  let waveSecondsPerPixel = $state(FIT_WAVEFORM_SECONDS_PER_PIXEL);
   // Fragment currently hovered (label shown even when not the focused/selected one).
   let hoveredAnnId     = $state(/** @type {number|null} */ (null));
 
@@ -336,6 +406,19 @@
   let reanalyzeError     = $state('');
 
   const playheadX = $derived(duration > 0 ? (currentTime / duration) * VW : 0);
+  const waveFitSecondsPerPixel = $derived(
+    waveformFitSecondsPerPixel(duration, waveViewportWidth)
+  );
+  const waveContentWidthPx = $derived(
+    waveformContentWidth(duration, waveViewportWidth, waveSecondsPerPixel)
+  );
+  const waveScale = $derived(
+    waveformZoomScale(duration, waveViewportWidth, waveSecondsPerPixel)
+  );
+  const waveWrapWidth = $derived(
+    waveContentWidthPx > 0 ? `${waveContentWidthPx}px` : '100%'
+  );
+  const waveZoomLabel = $derived(formatWaveformSecondsPerPixel(waveSecondsPerPixel));
 
   function secToX(sec) {
     return duration > 0 ? (sec / duration) * VW : 0;
@@ -400,15 +483,27 @@
     return () => ro.disconnect();
   });
 
-  async function setWaveZoom(nextZoom) {
-    if (nextZoom === waveZoom) return;
+  $effect(() => {
+    const scrollEl = waveScrollEl;
+    if (!scrollEl) return;
+    const updateViewportWidth = () => {
+      waveViewportWidth = scrollEl.clientWidth;
+    };
+    updateViewportWidth();
+    const ro = new ResizeObserver(updateViewportWidth);
+    ro.observe(scrollEl);
+    return () => ro.disconnect();
+  });
+
+  async function setWaveSecondsPerPixel(nextSecondsPerPixel) {
+    if (nextSecondsPerPixel === waveSecondsPerPixel) return;
 
     const scrollEl = waveScrollEl;
     const oldScrollLeft = scrollEl?.scrollLeft ?? 0;
     const viewportWidth = scrollEl?.clientWidth ?? 0;
     const oldContentWidth = scrollEl?.scrollWidth ?? viewportWidth;
 
-    waveZoom = nextZoom;
+    waveSecondsPerPixel = nextSecondsPerPixel;
     await tick();
 
     if (!scrollEl) return;
@@ -421,7 +516,28 @@
   }
 
   function changeWaveZoom(direction) {
-    void setWaveZoom(stepWaveformZoom(waveZoom, direction));
+    void setWaveSecondsPerPixel(stepWaveformSecondsPerPixel(
+      waveSecondsPerPixel,
+      direction,
+      waveFitSecondsPerPixel,
+    ));
+  }
+
+  function scrollWaveformRangeIntoView(startSec, endSec, focusSec) {
+    const scrollEl = waveScrollEl;
+    if (!scrollEl || duration <= 0 || scrollEl.scrollWidth <= scrollEl.clientWidth) return;
+    const pxPerSec = scrollEl.scrollWidth / duration;
+    const nextScrollLeft = waveformRangeScrollLeft(
+      scrollEl.scrollLeft,
+      scrollEl.clientWidth,
+      scrollEl.scrollWidth,
+      startSec * pxPerSec,
+      endSec * pxPerSec,
+      focusSec * pxPerSec,
+    );
+    if (nextScrollLeft !== scrollEl.scrollLeft) {
+      scrollEl.scrollTo({ left: nextScrollLeft, behavior: 'smooth' });
+    }
   }
 
   /** Live preview of an annotation's bounds while it's being dragged. */
@@ -531,8 +647,13 @@
     }
   }
 
-  async function selectSample(sample, seekSec = null) {
+  async function selectSample(sample, seekSec = null, preserveWindowReviewFocus = false) {
     if (reanalyzeBusy) return;
+    if (!preserveWindowReviewFocus) {
+      focusedReviewKey = null;
+      appliedReviewKey = null;
+      lingeringWindowReview = null;
+    }
     if (audioEl && isPlaying) audioEl.pause();
     isPlaying      = false;
     playbackMode   = 'normal';
@@ -567,6 +688,9 @@
 
   function deselectSample() {
     if (reanalyzeBusy) return;
+    focusedReviewKey = null;
+    appliedReviewKey = null;
+    lingeringWindowReview = null;
     if (audioEl && isPlaying) audioEl.pause();
     isPlaying        = false;
     playbackMode     = 'normal';
@@ -657,6 +781,136 @@
     void selectSample(sample, point.recordingStart);
     await tick();
     if (audioEl?.readyState >= 1) applyPendingSeek();
+  }
+
+  async function focusWindowReviewCandidate(candidate) {
+    if (!candidate || reanalyzeBusy || windowReviewBusy) return;
+    const candidateIndex = visibleWindowReviewCandidates.findIndex(
+      item => item.reviewKey === candidate.reviewKey
+    );
+    if (focusedReviewKey !== candidate.reviewKey) appliedReviewKey = null;
+    focusedReviewKey = candidate.reviewKey;
+    // Snapshot every focused row. A manual waveform edit makes the projection
+    // bounds stale immediately, but the row should remain until focus moves.
+    lingeringWindowReview = {
+      candidate,
+      index: Math.max(0, candidateIndex),
+      tab: windowReviewTab,
+    };
+    windowReviewError = '';
+    const sample = samples.find((item) => item.id === candidate.sampleId);
+    if (!sample) {
+      windowReviewError = 'The parent recording is not in the current sample list.';
+      return;
+    }
+
+    const seekSec = candidate.targetWindow?.recordingStart ?? candidate.expected.startMs / 1000;
+    if (selected?.id !== sample.id) await selectSample(sample, seekSec, true);
+    else {
+      pendingSeekSec = seekSec;
+      applyPendingSeek();
+    }
+    selectedAnnId = candidate.annotationId;
+    await tick();
+    if (audioEl?.readyState >= 1) applyPendingSeek();
+    const targetStart = candidate.targetWindow?.recordingStart ?? candidate.expected.startMs / 1000;
+    const targetEnd = Number.isFinite(candidate.targetWindow?.recordingEnd)
+      ? candidate.targetWindow.recordingEnd
+      : candidate.expected.endMs / 1000;
+    scrollWaveformRangeIntoView(
+      candidate.expected.startMs / 1000,
+      candidate.expected.endMs / 1000,
+      (targetStart + targetEnd) / 2,
+    );
+  }
+
+  function selectWindowReviewTab(tab) {
+    if (windowReviewTab === tab) return;
+    windowReviewTab = tab;
+    focusedReviewKey = null;
+    appliedReviewKey = null;
+    lingeringWindowReview = null;
+    windowReviewError = '';
+  }
+
+  function focusAdjacentWindowReviewCandidate(delta) {
+    if (!visibleWindowReviewCandidates.length || windowReviewBusy) return;
+    const currentIndex = visibleWindowReviewCandidates.findIndex(
+      candidate => candidate.reviewKey === focusedReviewKey
+    );
+    const startIndex = currentIndex === -1 ? (delta > 0 ? -1 : visibleWindowReviewCandidates.length) : currentIndex;
+    const nextIndex = Math.max(0, Math.min(visibleWindowReviewCandidates.length - 1, startIndex + delta));
+    void focusWindowReviewCandidate(visibleWindowReviewCandidates[nextIndex]);
+  }
+
+  async function submitWindowReview(action) {
+    const candidate = focusedReviewCandidate;
+    if (!candidate || !editingAccess || windowReviewBusy || focusedWindowReviewApplied) return;
+    const currentIndex = visibleWindowReviewCandidates.findIndex(
+      item => item.reviewKey === candidate.reviewKey
+    );
+    windowReviewBusy = true;
+    windowReviewError = '';
+    let nextCandidate = null;
+    try {
+      const res = await fetch(`${PRIVATE_API_BASE}/api/annotations/${candidate.annotationId}/window-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          expected: candidate.expected,
+          proposal: action === 'keep' || action === 'unkeep' ? undefined : candidate.proposal,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+
+      const changedIds = new Set(data.annotations.map(annotation => annotation.id));
+      allAnnotations = [
+        ...allAnnotations.filter(annotation => !changedIds.has(annotation.id)),
+        ...data.annotations,
+      ];
+      if (selected?.id === candidate.sampleId) {
+        annotations = [
+          ...annotations.filter(annotation => !changedIds.has(annotation.id)),
+          ...data.annotations,
+        ].sort((a, b) => a.startSec - b.startSec);
+        syncSampleFragmentsFromAnnotations();
+      }
+
+      if (action === 'keep' || action === 'unkeep') {
+        focusedReviewKey = null;
+        appliedReviewKey = null;
+        lingeringWindowReview = null;
+        await tick();
+        nextCandidate = visibleWindowReviewCandidates[
+          Math.min(currentIndex, visibleWindowReviewCandidates.length - 1)
+        ] ?? null;
+      } else {
+        appliedReviewKey = candidate.reviewKey;
+        selectedAnnId = data.annotations.find(annotation => annotation.id === candidate.annotationId)?.id
+          ?? data.annotations[0]?.id
+          ?? null;
+        await tick();
+        pendingSeekSec = candidate.targetWindow.recordingStart;
+        applyPendingSeek();
+        const targetWindowEnd = Number.isFinite(candidate.targetWindow.recordingEnd)
+          ? candidate.targetWindow.recordingEnd
+          : candidate.targetWindow.recordingStart;
+        scrollWaveformRangeIntoView(
+          candidate.expected.startMs / 1000,
+          candidate.expected.endMs / 1000,
+          (candidate.targetWindow.recordingStart + targetWindowEnd) / 2,
+        );
+      }
+    } catch (error) {
+      windowReviewError = error?.message ?? 'Failed to review fragment';
+      if (/changed since/.test(windowReviewError)) void fetchSidebarAnnotationSummary();
+    } finally {
+      windowReviewBusy = false;
+    }
+    if (nextCandidate) await focusWindowReviewCandidate(nextCandidate);
   }
 
   async function togglePlay() {
@@ -1167,7 +1421,7 @@
         changeWaveZoom(-1);
       } else if (e.key === '0') {
         e.preventDefault();
-        void setWaveZoom(1);
+        void setWaveSecondsPerPixel(FIT_WAVEFORM_SECONDS_PER_PIXEL);
       }
     }
 
@@ -1177,6 +1431,29 @@
       if (selectedAnnId != null) { selectedAnnId = null; return; }
     }
     if (reanalyzeConfirm || reanalyzeBusy || bulkRelabelBusy) return;
+    // Allow AltGraph-produced brackets as well as direct [ / ] keys.
+    if (editingAccess && !inField && !e.metaKey && (e.key === '[' || e.key === ']')) {
+      e.preventDefault();
+      focusAdjacentWindowReviewCandidate(e.key === ']' ? 1 : -1);
+      return;
+    }
+    if (editingAccess && !inField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (
+        e.key.toLowerCase() === 'p'
+        && windowReviewTab === 'contrast'
+        && focusedReviewCandidate?.action
+        && !focusedWindowReviewApplied
+      ) {
+        e.preventDefault();
+        void submitWindowReview(focusedReviewCandidate.action);
+        return;
+      }
+      if (e.key.toLowerCase() === 'k' && focusedReviewCandidate && !focusedWindowReviewApplied) {
+        e.preventDefault();
+        void submitWindowReview(windowReviewTab === 'kept' ? 'unkeep' : 'keep');
+        return;
+      }
+    }
     if (editingAccess && !inField && (e.key === 'Delete' || e.key === 'Backspace') && selectedAnnId != null) {
       e.preventDefault();
       deleteSelectedAnnotation();
@@ -1232,6 +1509,13 @@
     void probeEditingAccess().then((available) => {
       if (!disposed) editingAccess = available;
     });
+    void loadTrainingProjectionPoints()
+      .then((points) => {
+        if (!disposed) projectionPoints = points;
+      })
+      .catch((error) => {
+        if (!disposed) projectionReviewError = error?.message ?? 'Failed to load projection data';
+      });
     return () => {
       disposed = true;
     };
@@ -1269,73 +1553,83 @@
   </header>{/if}
 
   <div class="training-body">
-    {#if !embedded}<aside class="samples-pane">
-      <div class="samples-filter">
+    {#if !embedded}<aside class="samples-pane" class:collapsed={samplesSidebarCollapsed} aria-label="Training samples">
+      <button
+        class="sidebar-toggle"
+        type="button"
+        aria-controls="training-samples-sidebar-content"
+        aria-expanded={!samplesSidebarCollapsed}
+        aria-label={samplesSidebarCollapsed ? 'Expand sample sidebar' : 'Collapse sample sidebar'}
+        title={samplesSidebarCollapsed ? 'Expand samples' : 'Collapse samples'}
+        onclick={() => (samplesSidebarCollapsed = !samplesSidebarCollapsed)}
+      >{samplesSidebarCollapsed ? '›' : '‹'}</button>
+      <div id="training-samples-sidebar-content" class="samples-pane-content">
+        <div class="samples-filter">
         {#each ALL_LABELS as lbl}
           <button class="filter-pill" class:active={filterLabel === lbl} onclick={() => (filterLabel = lbl)}>{lbl}</button>
         {/each}
         <button class="filter-pill reload-pill" onclick={reloadSidebar} title="Reload">
           {samplesLoading ? '…' : '↺'}
         </button>
-      </div>
-
-      {#if samplesError}
-        <div class="samples-msg samples-err">{samplesError}</div>
-      {:else if samplesLoading && samples.length === 0}
-        <div class="samples-msg">Loading…</div>
-      {:else if filteredSamples.length === 0}
-        <div class="samples-msg">No samples{filterLabel !== 'all' ? ` for "${filterLabel}"` : ''}.</div>
-      {:else}
-        <div class="samples-list">
-          {#each filteredSamples as sample, i (sample.id)}
-            {@const notePreview = selected?.id === sample.id ? selectedSampleWideNote?.label : sampleNotes.get(sample.id)}
-            {@const fragBlocks = sampleFragments.get(sample.id) ?? []}
-            {@const sampleDay = sample.datetimeLocal.slice(0, 10)}
-            {@const prevDay = i > 0 ? filteredSamples[i - 1].datetimeLocal.slice(0, 10) : null}
-            {@const sampleTime = sample.datetimeLocal.slice(11, 19)}
-            {#if sampleDay !== prevDay}
-              <div class="day-header">{formatDate(sampleDay)}</div>
-            {/if}
-            <button
-              class="sample-row"
-              class:playing={selected?.id === sample.id}
-              onpointerenter={(event) => {
-                if (event.shiftKey) hoveredSidebarSampleId = sample.id;
-              }}
-              onpointerleave={() => {
-                if (hoveredSidebarSampleId === sample.id) hoveredSidebarSampleId = null;
-              }}
-              onclick={() => toggleSample(sample)}
-            >
-              <span class="sample-label-pill" style:background={sampleLabelColor(sample.label)} title={sample.label}>{sample.label.slice(0, 3)}</span>
-              <span class="sample-name">
-                <span class="sample-name-main">
-                  {sampleTime}
-                  {#if sample.diaryId}<span class="sample-diary-icon" title="Linked to diary entry">📖</span>{/if}
-                </span>
-                {#if notePreview}<span class="sample-note-preview">{notePreview}</span>{/if}
-              </span>
-              <span class="sample-dur">{formatDuration(sample.durationSec)}</span>
-              {#if fragBlocks.length}
-                <span class="sample-frag-strip">
-                  {#each fragBlocks as frag, i (i)}
-                    <span
-                      class="sample-frag-block"
-                      style="left:{(frag.startFrac * 100).toFixed(2)}%; width:{Math.max(0.6, (frag.endFrac - frag.startFrac) * 100).toFixed(2)}%; background:{sampleLabelColor(frag.label)}"
-                    ></span>
-                  {/each}
-                </span>
-              {/if}
-            </button>
-          {/each}
         </div>
-      {/if}
+
+        {#if samplesError}
+          <div class="samples-msg samples-err">{samplesError}</div>
+        {:else if samplesLoading && samples.length === 0}
+          <div class="samples-msg">Loading…</div>
+        {:else if filteredSamples.length === 0}
+          <div class="samples-msg">No samples{filterLabel !== 'all' ? ` for "${filterLabel}"` : ''}.</div>
+        {:else}
+          <div class="samples-list">
+            {#each filteredSamples as sample, i (sample.id)}
+              {@const notePreview = selected?.id === sample.id ? selectedSampleWideNote?.label : sampleNotes.get(sample.id)}
+              {@const fragBlocks = sampleFragments.get(sample.id) ?? []}
+              {@const sampleDay = sample.datetimeLocal.slice(0, 10)}
+              {@const prevDay = i > 0 ? filteredSamples[i - 1].datetimeLocal.slice(0, 10) : null}
+              {@const sampleTime = sample.datetimeLocal.slice(11, 19)}
+              {#if sampleDay !== prevDay}
+                <div class="day-header">{formatDate(sampleDay)}</div>
+              {/if}
+              <button
+                class="sample-row"
+                class:playing={selected?.id === sample.id}
+                onpointerenter={(event) => {
+                  if (event.shiftKey) hoveredSidebarSampleId = sample.id;
+                }}
+                onpointerleave={() => {
+                  if (hoveredSidebarSampleId === sample.id) hoveredSidebarSampleId = null;
+                }}
+                onclick={() => toggleSample(sample)}
+              >
+                <span class="sample-label-pill" style:background={sampleLabelColor(sample.label)} title={sample.label}>{sample.label.slice(0, 3)}</span>
+                <span class="sample-name">
+                  <span class="sample-name-main">
+                    {sampleTime}
+                    {#if sample.diaryId}<span class="sample-diary-icon" title="Linked to diary entry">📖</span>{/if}
+                  </span>
+                  {#if notePreview}<span class="sample-note-preview">{notePreview}</span>{/if}
+                </span>
+                <span class="sample-dur">{formatDuration(sample.durationSec)}</span>
+                {#if fragBlocks.length}
+                  <span class="sample-frag-strip">
+                    {#each fragBlocks as frag, i (i)}
+                      <span
+                        class="sample-frag-block"
+                        style="left:{(frag.startFrac * 100).toFixed(2)}%; width:{Math.max(0.6, (frag.endFrac - frag.startFrac) * 100).toFixed(2)}%; background:{sampleLabelColor(frag.label)}"
+                      ></span>
+                    {/each}
+                  </span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </aside>{/if}
 
     <main class="editor-pane">
-      <h1 class="page-title">Training corpus summary</h1>
-
       {#if !selected}
+        <h1 class="page-title">Training corpus summary</h1>
         <div class="corpus-summary">
           <TrainingProjectionScatterplot
             {samples}
@@ -1496,7 +1790,7 @@
               <span>Threshold override: {reanalyzeThreshold.toFixed(2)}</span>
               <input
                 type="range"
-                min="0.9"
+                min="0.8"
                 max="1"
                 step="0.01"
                 bind:value={reanalyzeThreshold}
@@ -1567,7 +1861,7 @@
               <button
                 class="zoom-btn"
                 type="button"
-                disabled={waveZoom === WAVEFORM_ZOOM_LEVELS[0]}
+                disabled={waveSecondsPerPixel === FIT_WAVEFORM_SECONDS_PER_PIXEL}
                 title="Zoom out (−)"
                 aria-label="Zoom waveform out"
                 onclick={() => changeWaveZoom(-1)}
@@ -1575,15 +1869,15 @@
               <button
                 class="zoom-reset-btn"
                 type="button"
-                disabled={waveZoom === 1}
+                disabled={waveSecondsPerPixel === FIT_WAVEFORM_SECONDS_PER_PIXEL}
                 title="Reset zoom (0)"
                 aria-label="Reset waveform zoom"
-                onclick={() => setWaveZoom(1)}
-              >{waveZoom * 100}%</button>
+                onclick={() => setWaveSecondsPerPixel(FIT_WAVEFORM_SECONDS_PER_PIXEL)}
+              >{waveZoomLabel}</button>
               <button
                 class="zoom-btn"
                 type="button"
-                disabled={waveZoom === WAVEFORM_ZOOM_LEVELS.at(-1)}
+                disabled={waveSecondsPerPixel > 0 && waveSecondsPerPixel <= MIN_WAVEFORM_SECONDS_PER_PIXEL}
                 title="Zoom in (+)"
                 aria-label="Zoom waveform in"
                 onclick={() => changeWaveZoom(1)}
@@ -1593,7 +1887,7 @@
         </div>
 
         <div class="wave-editor-scroll" bind:this={waveScrollEl}>
-        <div class="wave-editor-wrap" bind:this={waveWrapEl} style:width="{waveZoom * 100}%">
+        <div class="wave-editor-wrap" bind:this={waveWrapEl} style:width={waveWrapWidth}>
           <!-- Waveform bars are painted here at native pixel resolution
                instead of as hundreds of SVG <rect> nodes (see drawWaveCanvas). -->
           <canvas class="wave-canvas" bind:this={waveCanvasEl}></canvas>
@@ -1615,7 +1909,7 @@
 
             {#each renderFragments as ann (ann.id)}
               {@const x = secToX(ann.startSec)}
-              {@const w = Math.max(zoomInvariantSvgWidth(2, waveZoom), secToX(ann.endSec) - x)}
+              {@const w = Math.max(zoomInvariantSvgWidth(2, waveScale), secToX(ann.endSec) - x)}
               <rect
                 class="fragment-band"
                 x={x} y="0" width={w} height={VH}
@@ -1628,26 +1922,43 @@
                 onmouseleave={() => (hoveredAnnId = null)}
               ></rect>
               {#if editingAccess && !reanalyzeBusy && selectedAnnId === ann.id}
-                {@const handleWidth = zoomInvariantSvgWidth(6, waveZoom)}
+                {@const handleWidth = zoomInvariantSvgWidth(6, waveScale)}
                 <rect class="frag-handle" x={x - handleWidth / 2} y={VH * (2 / 3)} width={handleWidth} height={VH / 3} data-role="handle-start" data-ann-id={ann.id}></rect>
                 <rect class="frag-handle" x={x + w - handleWidth / 2} y={VH * (2 / 3)} width={handleWidth} height={VH / 3} data-role="handle-end" data-ann-id={ann.id}></rect>
               {/if}
             {/each}
 
+            {#if focusedReviewTargetWindow && focusedReviewCandidate.sampleId === selected.id}
+              {@const reviewWindowX = secToX(focusedReviewTargetWindow.recordingStart)}
+              {@const reviewWindowWidth = Math.max(
+                zoomInvariantSvgWidth(2, waveScale),
+                secToX(focusedReviewTargetWindow.recordingEnd) - reviewWindowX,
+              )}
+              <rect
+                class="review-window"
+                x={reviewWindowX}
+                y="1"
+                width={reviewWindowWidth}
+                height={VH - 2}
+                rx="2"
+                aria-label="Suspect classifier window"
+              ></rect>
+            {/if}
+
           {#each renderNotes as ann (ann.id)}
             {@const x = secToX(ann.startSec)}
             <line class="fixed-svg-stroke" x1={x} y1="0" x2={x} y2={VH} stroke={NOTE_COLOR} stroke-width={selectedAnnId === ann.id ? 3 : 2} data-role="note-marker" data-ann-id={ann.id}></line>
-            <ellipse cx={x} cy="7" rx={zoomInvariantSvgWidth(5, waveZoom)} ry="5" fill={NOTE_COLOR} data-role="note-marker" data-ann-id={ann.id}></ellipse>
+            <ellipse cx={x} cy="7" rx={zoomInvariantSvgWidth(5, waveScale)} ry="5" fill={NOTE_COLOR} data-role="note-marker" data-ann-id={ann.id}></ellipse>
           {/each}
 
           {#if pending}
             {@const x = secToX(pending.startSec)}
-            {@const w = Math.max(zoomInvariantSvgWidth(1, waveZoom), secToX(pending.endSec) - x)}
+            {@const w = Math.max(zoomInvariantSvgWidth(1, waveScale), secToX(pending.endSec) - x)}
             <rect x={x} y="0" width={w} height={VH} fill="#1a1a1a" opacity="0.15"></rect>
           {/if}
           {#if dragMode === 'brush'}
             {@const x = secToX(Math.min(dragStartSec, dragCurrentSec))}
-            {@const w = Math.max(zoomInvariantSvgWidth(1, waveZoom), secToX(Math.max(dragStartSec, dragCurrentSec)) - x)}
+            {@const w = Math.max(zoomInvariantSvgWidth(1, waveScale), secToX(Math.max(dragStartSec, dragCurrentSec)) - x)}
             <rect x={x} y="0" width={w} height={VH} fill="#1a1a1a" opacity="0.12"></rect>
           {/if}
 
@@ -1797,6 +2108,88 @@
         {#if annotationsError}<div class="error-msg">{annotationsError}</div>{/if}
       {/if}
     </main>
+
+    {#if editingAccess && !embedded}
+      <aside class="window-review-pane" class:collapsed={windowReviewSidebarCollapsed} aria-label="Suspicious bark fragment review">
+        <button
+          class="sidebar-toggle"
+          type="button"
+          aria-controls="window-review-sidebar-content"
+          aria-expanded={!windowReviewSidebarCollapsed}
+          aria-label={windowReviewSidebarCollapsed ? 'Expand window review sidebar' : 'Collapse window review sidebar'}
+          title={windowReviewSidebarCollapsed ? 'Expand window review' : 'Collapse window review'}
+          onclick={() => (windowReviewSidebarCollapsed = !windowReviewSidebarCollapsed)}
+        >{windowReviewSidebarCollapsed ? '‹' : '›'}</button>
+        <div id="window-review-sidebar-content" class="window-review-content">
+          <div class="window-review-heading">
+            <strong>Window review</strong>
+            <span>{visibleWindowReviewCandidates.length}</span>
+          </div>
+          <div class="window-review-tabs" role="tablist" aria-label="Window review queues">
+          {#each WINDOW_REVIEW_TABS as tab}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={windowReviewTab === tab.id}
+              class:active={windowReviewTab === tab.id}
+              onclick={() => selectWindowReviewTab(tab.id)}
+            >{tab.label}<small>{windowReviewQueues[tab.id]?.length ?? 0}</small></button>
+          {/each}
+          </div>
+
+        {#if projectionReviewError}
+          <div class="window-review-message error-msg">{projectionReviewError}</div>
+        {:else if projectionPoints.length === 0 || allAnnotations.length === 0}
+          <div class="window-review-message">Loading…</div>
+        {:else if visibleWindowReviewCandidates.length === 0}
+          <div class="window-review-message">No fragments in this queue.</div>
+        {:else}
+          <div class="window-review-list">
+            {#each visibleWindowReviewCandidates as candidate (candidate.reviewKey)}
+              {@const applied = appliedReviewKey === candidate.reviewKey}
+              {@const reviewAction = WINDOW_REVIEW_ACTIONS[candidate.action]}
+              {@const reviewIcon = reviewAction?.icon ?? WINDOW_REVIEW_KIND_ICONS[candidate.reviewKind]}
+              <button
+                class="window-review-row"
+                class:active={candidate.reviewKey === focusedReviewKey}
+                class:applied
+                disabled={windowReviewBusy}
+                onclick={() => focusWindowReviewCandidate(candidate)}
+                title={applied
+                  ? 'Applied; adjust the fragment or select another review item to dismiss'
+                  : reviewAction?.label ?? `${candidate.reviewKind} review`}
+                aria-label={`${applied ? 'Applied, ' : ''}${reviewAction?.label ?? candidate.reviewKind}, ${candidate.windows.length} windows`}
+              >
+                <span class="window-review-icon" aria-hidden="true">{reviewIcon}</span>
+                <span class="window-review-details">
+                  <span>{formatWindowReviewSummary(candidate)} </span><span class="window-confidence-bars" aria-hidden="true">{#each windowConfidenceBarSegments(candidate.scores, candidate.targetIndex) as segment (segment.index)}<span class:target={segment.target}>{segment.bar}</span>{/each}</span>
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        {#if windowReviewError}<div class="window-review-message error-msg">{windowReviewError}</div>{/if}
+        <div class="window-review-actions">
+          {#if windowReviewTab === 'contrast'}
+            <button
+              class="action-btn"
+              disabled={!focusedReviewCandidate || windowReviewBusy || focusedWindowReviewApplied}
+              onclick={() => focusedReviewCandidate && submitWindowReview(focusedReviewCandidate.action)}
+            >{focusedWindowReviewApplied ? 'Applied' : 'Apply'} <kbd>P</kbd></button>
+          {:else if windowReviewTab !== 'kept'}
+            <span class="window-review-manual">Adjust manually</span>
+          {/if}
+          <button
+            class="action-btn"
+            disabled={!focusedReviewCandidate || windowReviewBusy || focusedWindowReviewApplied}
+            onclick={() => submitWindowReview(windowReviewTab === 'kept' ? 'unkeep' : 'keep')}
+          >{windowReviewTab === 'kept' ? 'Unkeep' : 'Keep'} <kbd>K</kbd></button>
+        </div>
+          <div class="window-review-shortcuts"><kbd>[</kbd>/<kbd>]</kbd> navigate · <kbd>Space</kbd> listen</div>
+        </div>
+      </aside>
+    {/if}
   </div>
 </div>
 
@@ -1874,12 +2267,178 @@
     flex-direction: column;
     position: sticky;
     top: 49px;
+    overflow: hidden;
+    transition: width 0.15s ease;
+  }
+
+  .samples-pane-content,
+  .window-review-content {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .samples-pane.collapsed,
+  .window-review-pane.collapsed {
+    width: 36px;
+  }
+
+  .samples-pane.collapsed .samples-pane-content,
+  .window-review-pane.collapsed .window-review-content {
+    display: none;
+  }
+
+  .sidebar-toggle {
+    position: absolute;
+    z-index: 5;
+    top: 0.55rem;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid #d8d8d4;
+    border-radius: 4px;
+    background: #fff;
+    color: #666;
+    font-family: var(--font-monospace);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .sidebar-toggle:hover { border-color: #aaa; background: #f3f3ef; color: #222; }
+  .samples-pane > .sidebar-toggle { right: 0.3rem; }
+  .window-review-pane > .sidebar-toggle { left: 0.3rem; }
+  .samples-pane .samples-filter { padding-right: 2.65rem; }
+  .window-review-pane .window-review-heading { padding-left: 2.65rem; }
+
+  .samples-pane.collapsed > .sidebar-toggle,
+  .window-review-pane.collapsed > .sidebar-toggle {
+    left: 4px;
+    right: auto;
   }
 
   .editor-pane {
     flex: 1;
     min-width: 0;
     padding: 1rem 1.2rem 2rem;
+  }
+
+  .window-review-pane {
+    width: 300px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 49px;
+    height: calc(100dvh - 49px);
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e0e0dc;
+    background: #fff;
+    overflow: hidden;
+    transition: width 0.15s ease;
+  }
+  .window-review-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0.8rem;
+    border-bottom: 1px solid #ecece7;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+    text-transform: uppercase;
+  }
+  .window-review-heading span {
+    min-width: 1.7rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 10px;
+    background: #f0f0ec;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .window-review-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-bottom: 1px solid #ecece7;
+  }
+  .window-review-tabs button {
+    min-width: 0;
+    padding: 0.45rem 0.2rem 0.4rem;
+    border: 0;
+    border-right: 1px solid #ecece7;
+    border-bottom: 2px solid transparent;
+    background: #fafaf8;
+    color: #777;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+    cursor: pointer;
+  }
+  .window-review-tabs button:last-child { border-right: 0; }
+  .window-review-tabs button:hover { background: #f3f3ef; color: #333; }
+  .window-review-tabs button.active { border-bottom-color: #4a7cdc; background: #fff; color: #222; font-weight: 700; }
+  .window-review-tabs small {
+    display: block;
+    margin-top: 0.1rem;
+    color: #aaa;
+    font: inherit;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .window-review-list { flex: 1; min-height: 0; overflow-y: auto; }
+  .window-review-row {
+    display: grid;
+    grid-template-columns: 1.8rem 1fr;
+    align-items: baseline;
+    width: 100%;
+    padding: 0.48rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid #f1f1ed;
+    background: transparent;
+    color: #333;
+    font-family: var(--font-monospace);
+    font-size: var(--font-size-tiny);
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    white-space: pre;
+    cursor: pointer;
+  }
+  .window-review-icon { display: block; width: 1.8rem; }
+  .window-review-details { min-width: 0; }
+  .window-confidence-bars { letter-spacing: 0.04em; }
+  .window-confidence-bars .target {
+    padding: 0 0.08em;
+    border-radius: 2px;
+    background: #ffe09a;
+    color: #8b4d00;
+    font-weight: 900;
+  }
+  .window-review-row:hover { background: #f7f7f4; }
+  .window-review-row.active { background: #eef3fc; box-shadow: inset 3px 0 0 #4a7cdc; }
+  .window-review-row:disabled { cursor: wait; opacity: 0.65; }
+  .window-review-message { padding: 0.8rem; color: #999; font-family: var(--font-tiny); font-size: var(--font-size-tiny); }
+  .window-review-actions {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.65rem 0.75rem 0.35rem;
+    border-top: 1px solid #ecece7;
+  }
+  .window-review-actions .action-btn { flex: 1; }
+  .window-review-manual {
+    flex: 1;
+    align-self: center;
+    color: #888;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+    text-align: center;
+  }
+  .window-review-shortcuts {
+    padding: 0.15rem 0.75rem 0.7rem;
+    color: #999;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+  }
+  .window-review-pane kbd {
+    font-family: var(--font-monospace);
+    font-size: inherit;
   }
 
   .page-title {
@@ -1896,6 +2455,9 @@
     .site-header nav { width: 100%; order: 3; overflow-x: auto; margin-left: 0; }
     .training-body { flex-direction: column; }
     .samples-pane { width: 100%; position: static; height: 40vh; border-right: none; border-bottom: 1px solid #e0e0dc; }
+    .window-review-pane { width: 100%; position: static; height: 38vh; border-left: none; border-top: 1px solid #e0e0dc; }
+    .samples-pane.collapsed,
+    .window-review-pane.collapsed { width: 100%; height: 36px; }
   }
 
   .corpus-summary { container-type: inline-size; padding: 0 0.3rem 2rem; width: 100%; max-width: 90rem; }
@@ -2391,6 +2953,14 @@
   .fragment-band { cursor: pointer; }
   .wave-editor.readonly .fragment-band { cursor: inherit; }
   .frag-handle { fill: #1a1a1a; opacity: 0.35; cursor: ew-resize; }
+  .review-window {
+    fill: rgba(255, 255, 255, 0.12);
+    stroke: #111;
+    stroke-width: 2;
+    stroke-dasharray: 5 3;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
   .fixed-svg-stroke { vector-effect: non-scaling-stroke; }
 
   /* HTML overlay for fragment labels — a fixed font-size here always renders

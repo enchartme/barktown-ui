@@ -36,10 +36,13 @@ export function manualFilenameComment(entry) {
  * to their filename comment; automatic and SAMPLE markers never do.
  */
 export function recordingCommentLabels(entry) {
-  const databaseLabels = recordingCommentAnnotations(entry)
+  const databaseAnnotations = recordingCommentAnnotations(entry);
+  const databaseLabels = databaseAnnotations
     .map(annotation => typeof annotation.label === 'string' ? annotation.label.trim() : '')
     .filter(Boolean);
-  if (databaseLabels.length) return databaseLabels;
+  // An empty persisted note is the durable "comment cleared" marker. Its
+  // presence must suppress the immutable filename fallback on old recordings.
+  if (databaseAnnotations.length) return databaseLabels;
 
   const filenameComment = manualFilenameComment(entry);
   return filenameComment ? [filenameComment] : [];
