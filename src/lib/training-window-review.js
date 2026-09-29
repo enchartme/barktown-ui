@@ -43,11 +43,11 @@ function reviewMetric(candidate) {
 }
 
 export function formatWindowReviewSummary(candidate) {
-  return `${reviewMetric(candidate)} · ${String(candidate.windows.length).padStart(3, '0')}:`;
+  return reviewMetric(candidate);
 }
 
 export function formatWindowReviewDetails(candidate) {
-  return `${formatWindowReviewSummary(candidate)} ${windowConfidenceBars(candidate.scores)}`;
+  return `${formatWindowReviewSummary(candidate)}   ${windowConfidenceBars(candidate.scores)}`;
 }
 
 export function formatWindowReviewLine(candidate) {

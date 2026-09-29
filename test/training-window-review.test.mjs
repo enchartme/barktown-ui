@@ -53,7 +53,7 @@ test('formats the fixed-domain compact review row', () => {
     point(),
     point({ recordingStart: 1.33, embeddingId: 'window-1', windowIndex: 1, classifierScore: 0.99 }),
   ], [annotation]);
-  assert.equal(formatWindowReviewLine(candidate), '➡️ Δ.97 · 002: ▁█');
+  assert.equal(formatWindowReviewLine(candidate), '➡️ Δ.97   ▁█');
 });
 
 test('suggests boundary trims and calculates optimistic replacement bounds', () => {
@@ -190,5 +190,5 @@ test('kept fragments are hidden from review queues and shown once in Kept', () =
   assert.deepEqual(queues.suspect, []);
   assert.equal(queues.kept.length, 1);
   assert.equal(queues.kept[0].reviewKey, 'kept:7');
-  assert.equal(formatWindowReviewLine(queues.kept[0]), 'Kept · 002: ▁█');
+  assert.equal(formatWindowReviewLine(queues.kept[0]), 'Kept   ▁█');
 });

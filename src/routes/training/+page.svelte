@@ -11,7 +11,7 @@
     formatSampleDatetime,
     formatDate,
   } from '$lib/utils.js';
-  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, SAMPLE_LABEL_GUIDELINES as LABEL_GUIDELINES, filterTrainingSamples, fragmentRelabelTargets, sampleLabelColor, sampleLabelShortcut, trainingLabelActionForShortcut } from '$lib/sample-labels.js';
+  import { SAMPLE_LABELS as LABELS, FRAGMENT_LABELS, filterTrainingSamples, fragmentRelabelTargets, sampleLabelColor, sampleLabelShortcut, trainingLabelActionForShortcut } from '$lib/sample-labels.js';
   import { TRAINING_COLOR_ENCODINGS, TRAINING_COLOR_GUIDES } from '$lib/training-color-guides.js';
   import {
     FIT_WAVEFORM_SECONDS_PER_PIXEL,
@@ -139,9 +139,7 @@
 
   const filteredSamples = $derived(filterTrainingSamples(samples, filterLabel, sampleFragments));
 
-  // Corpus-wide counts per label, for the summary shown when nothing is
-  // selected -- lets you check progress against the benchmarks in
-  // docs/training-data.md (30–50 min viable, 100+ better, per class).
+  // Corpus-wide counts per label, for the summary shown when nothing is selected.
   const sampleCountsByLabel = $derived.by(() => {
     const counts = new Map();
     for (const s of samples) counts.set(s.label, (counts.get(s.label) ?? 0) + 1);
@@ -804,7 +802,7 @@
       return;
     }
 
-    const seekSec = candidate.targetWindow?.recordingStart ?? candidate.expected.startMs / 1000;
+    const seekSec = candidate.expected.startMs / 1000;
     if (selected?.id !== sample.id) await selectSample(sample, seekSec, true);
     else {
       pendingSeekSec = seekSec;
@@ -1672,8 +1670,6 @@
               <thead>
                 <tr>
                   <th>Label</th>
-                  <th>Duration</th>
-                  <th>Occupancy</th>
                   <th>Samples</th>
                   <th>Fragments</th>
                   <th>Fragment durations<small>0.5s bins · hover for counts</small></th>
@@ -1684,7 +1680,6 @@
               <tbody>
                 {#each LABELS as lbl}
                   {@const fragCount = fragmentCountsByLabel.get(lbl) ?? 0}
-                  {@const guide = LABEL_GUIDELINES[lbl]}
                   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
                   <tr
                     class:filter-active={activeCorpusLabel === lbl}
@@ -1695,15 +1690,8 @@
                     title={`Focus ${lbl}; click to ${pinnedCorpusLabel === lbl ? 'clear' : 'keep'} focus`}
                   >
                     <td><span class="sample-label-pill" style:background={sampleLabelColor(lbl)}>{lbl}</span></td>
-                    <td class="corpus-guideline">{guide?.duration ?? '\u2014'}</td>
-                    <td class="corpus-guideline">{guide?.occupancy ?? '\u2014'}</td>
                     <td>{sampleCountsByLabel.get(lbl) ?? 0}</td>
-                    <td
-                      class="corpus-frag-count"
-                      class:corpus-low={fragCount < 30}
-                      class:corpus-mid={fragCount >= 30 && fragCount < 100}
-                      class:corpus-good={fragCount >= 100}
-                    >{fragCount}</td>
+                    <td>{fragCount}</td>
                     <td class="corpus-chart-cell" title={fragmentDurationTitle(lbl)}>
                       <span class="chart">{fragmentDurationChart(lbl)}</span>
                     </td>
@@ -1715,9 +1703,6 @@
                 {/each}
               </tbody>
             </table>
-            <p class="corpus-summary-legend">
-              Desired number of fragments: <span class="corpus-low">&lt;30 not enough</span> · <span class="corpus-mid">30–99 viable</span> · <span class="corpus-good">100+ good</span>
-            </p>
             <p class="corpus-summary-legend">
               Hover the table row above to highlight the dots in scatterplot. Click to select.
             </p>
@@ -2162,7 +2147,7 @@
               >
                 <span class="window-review-icon" aria-hidden="true">{reviewIcon}</span>
                 <span class="window-review-details">
-                  <span>{formatWindowReviewSummary(candidate)} </span><span class="window-confidence-bars" aria-hidden="true">{#each windowConfidenceBarSegments(candidate.scores, candidate.targetIndex) as segment (segment.index)}<span class:target={segment.target}>{segment.bar}</span>{/each}</span>
+                  <span>{formatWindowReviewSummary(candidate)}</span><span class="window-confidence-bars" aria-hidden="true">{#each windowConfidenceBarSegments(candidate.scores, candidate.targetIndex) as segment (segment.index)}<span class:target={segment.target}>{segment.bar}</span>{/each}</span>
                 </span>
               </button>
             {/each}
@@ -2278,6 +2263,7 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
+    overflow-x: hidden;
   }
 
   .samples-pane.collapsed,
@@ -2325,7 +2311,7 @@
   }
 
   .window-review-pane {
-    width: 300px;
+    width: 240px;
     flex-shrink: 0;
     position: sticky;
     top: 49px;
@@ -2383,7 +2369,7 @@
     font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
-  .window-review-list { flex: 1; min-height: 0; overflow-y: auto; }
+  .window-review-list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
   .window-review-row {
     display: grid;
     grid-template-columns: 1.8rem 1fr;
@@ -2403,7 +2389,7 @@
   }
   .window-review-icon { display: block; width: 1.8rem; }
   .window-review-details { min-width: 0; }
-  .window-confidence-bars { letter-spacing: 0.04em; }
+  .window-confidence-bars { margin-left: 2ch; letter-spacing: 0.04em; }
   .window-confidence-bars .target {
     padding: 0 0.08em;
     border-radius: 2px;
@@ -2574,12 +2560,6 @@
   .corpus-table tbody tr.filter-active { box-shadow: inset 3px 0 0 #555; }
   .corpus-table tbody tr.filter-muted { opacity: 0.48; }
 
-  .corpus-guideline { color: #999; white-space: nowrap; }
-  .corpus-frag-count { font-weight: 700; }
-  .corpus-low  { color: #c0392b; }
-  .corpus-mid  { color: #b8860b; }
-  .corpus-good { color: #27ae60; }
-
   .corpus-summary-legend { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #999; margin-top: 1rem; }
 
   .corpus-back-btn {
@@ -2643,7 +2623,7 @@
   .samples-msg { padding: 1rem 0.9rem; font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #999; }
   .samples-err { color: #c0392b; }
 
-  .samples-list { padding-bottom: 0.5rem; overflow-y: auto; flex: 1; }
+  .samples-list { padding-bottom: 0.5rem; overflow-x: hidden; overflow-y: auto; flex: 1; }
 
   .sample-row {
     display: flex;
