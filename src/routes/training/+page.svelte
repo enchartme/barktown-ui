@@ -336,7 +336,6 @@
   /** @type {{ mins: number[], maxs: number[], norm: number }|null} */
   let waveData        = $state(null);
   let waveLoading      = $state(false);
-  let regenLoading     = $state(false);
   /** @type {Map<string, any>} */
   const waveCache      = new Map();
   /** @type {SVGSVGElement|null} */
@@ -603,27 +602,6 @@
       waveData = null;
     } finally {
       waveLoading = false;
-    }
-  }
-
-  async function handleRegenWaveform(pps) {
-    if (!editingAccess || !selected || regenLoading || reanalyzeBusy) return;
-    regenLoading = true;
-    try {
-      const res = await fetch(
-        `${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(selected.id)}/regenerate-waveform`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pixelsPerSecond: pps }) },
-      );
-      if (!res.ok) throw new Error(`${res.status}`);
-      const { waveformPath } = await res.json();
-      waveCache.delete(selected.waveformPath);
-      waveCache.delete(waveformPath);
-      selected = { ...selected, waveformPath };
-      await loadWaveform(waveformPath);
-    } catch (e) {
-      console.error('Waveform regen failed:', e);
-    } finally {
-      regenLoading = false;
     }
   }
 
@@ -1833,14 +1811,6 @@
             <span class="hint">Drag on the waveform to select a fragment · click a fragment to edit it · Delete removes the selection</span>
           {/if}
           <div class="player-tool-controls">
-            {#if editingAccess && selected}
-              <div class="wave-resolution-controls" role="group" aria-label="Waveform source resolution">
-                <span class="regen-label">Resolution:</span>
-                <button class="regen-btn" onclick={() => handleRegenWaveform(20)}  disabled={regenLoading || reanalyzeBusy} title="20 px/s (default)">20/s</button>
-                <button class="regen-btn" onclick={() => handleRegenWaveform(50)}  disabled={regenLoading || reanalyzeBusy} title="50 px/s">50/s</button>
-                <button class="regen-btn" onclick={() => handleRegenWaveform(100)} disabled={regenLoading || reanalyzeBusy} title="100 px/s">100/s</button>
-              </div>
-            {/if}
             <div class="wave-zoom-controls" role="group" aria-label="Horizontal waveform zoom">
               <span class="zoom-label">Zoom</span>
               <button
@@ -2861,21 +2831,11 @@
     gap: 0.6rem;
     margin-left: auto;
   }
-  .wave-resolution-controls,
   .wave-zoom-controls {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
   }
-  .regen-label { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; }
-  .regen-btn {
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny); padding: 0.1rem 0.35rem;
-    border: 1px solid #c0c8d8; border-radius: 4px;
-    background: #f4f6fa; color: #445; cursor: pointer;
-    line-height: 1.4;
-  }
-  .regen-btn:hover:not(:disabled) { background: #e0e8f8; }
-  .regen-btn:disabled { opacity: 0.5; cursor: default; }
 
   .zoom-label { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; }
   .zoom-btn,
