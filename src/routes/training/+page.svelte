@@ -38,6 +38,7 @@
     windowConfidenceBarSegments,
   } from '$lib/training-window-review.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
+  import { jankyPlaybackProfile, jankyPlaybackStep } from '$lib/janky-playback.js';
   import { taggedFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
   import TrainingProjectionScatterplot from '$lib/components/TrainingProjectionScatterplot.svelte';
@@ -316,9 +317,15 @@
   let isPlaying       = $state(false);
   let playbackMode    = $state(/** @type {'normal'|'approver'} */ ('normal'));
   let approverRangeIndex = 0;
+  let jankyLevel      = $state(0);
+  let jankyUnitSec    = $state(0.5);
   let currentTime     = $state(0);
   let duration        = $state(0);
   let pendingSeekSec  = $state(/** @type {number|null} */ (null));
+  const jankyProfile  = $derived(jankyPlaybackProfile(jankyLevel, jankyUnitSec));
+  const jankyTitle    = $derived(jankyLevel === 0
+    ? 'Smooth playback'
+    : `Play ${jankyProfile.playSec.toFixed(2)} s and skip ${jankyProfile.skipSec.toFixed(2)} s of every ${jankyProfile.unitSec.toFixed(1)} s`);
 
   // rAF-based playhead: sample audioEl.currentTime at ~60 fps while playing so
   // the playhead moves smoothly. ontimeupdate stays as a seek fallback.
@@ -327,7 +334,7 @@
     let id = 0;
     const tick = () => {
       currentTime = audioEl.currentTime;
-      if (playbackMode === 'approver') enforceApproverPlayback();
+      enforcePlaybackModes();
       id = requestAnimationFrame(tick);
     };
     id = requestAnimationFrame(tick);
@@ -919,6 +926,28 @@
     currentTime = step.time;
   }
 
+  function enforceJankyPlayback() {
+    if (!audioEl || jankyLevel === 0) return;
+    const step = jankyPlaybackStep(audioEl.currentTime, jankyLevel, jankyUnitSec);
+    if (step.type === 'keep') return;
+
+    const audioDuration = Number.isFinite(audioEl.duration) ? audioEl.duration : duration;
+    const nextTime = audioDuration > 0 ? Math.min(step.time, audioDuration) : step.time;
+    if (nextTime <= audioEl.currentTime) return;
+    audioEl.currentTime = nextTime;
+    currentTime = nextTime;
+  }
+
+  /** Apply both playback filters. Re-check approver ranges after a Janky seek
+   * so a base-unit boundary cannot leak audio from an untagged gap. */
+  function enforcePlaybackModes() {
+    if (!audioEl) return;
+    if (playbackMode === 'approver') enforceApproverPlayback();
+    if (audioEl.paused) return;
+    enforceJankyPlayback();
+    if (playbackMode === 'approver' && !audioEl.paused) enforceApproverPlayback();
+  }
+
   async function toggleApproverPlay() {
     if (!editingAccess || !audioEl || approverRanges.length === 0) return;
     if (isPlaying && playbackMode === 'approver') {
@@ -1388,6 +1417,19 @@
   function handleKeydown(e) {
     const inField = e.target?.tagName === 'INPUT' || e.target?.tagName === 'SELECT' || e.target?.tagName === 'TEXTAREA';
 
+    // Playback remains global even while an input, slider, radio, select, or
+    // button owns focus, including while another editor state is active.
+    // Prevent the focused control's normal Space action so one keypress only
+    // toggles the requested playback mode.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === ' ') {
+      e.preventDefault();
+      if (!e.repeat) {
+        if (e.shiftKey) void toggleApproverPlay();
+        else void togglePlay();
+      }
+      return;
+    }
+
     if (selected && !inField && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
@@ -1437,13 +1479,6 @@
     if (editingAccess && !inField && e.key === 'Enter' && pending) {
       e.preventDefault();
       commitFragment();
-    }
-    if (!inField && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === ' ') {
-      e.preventDefault();
-      if (!e.repeat) {
-        if (e.shiftKey) void toggleApproverPlay();
-        else void togglePlay();
-      }
     }
     if (!inField && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'q' || e.key === 'w')) {
       e.preventDefault();
@@ -1806,10 +1841,30 @@
                   : 'Approver listening: play tagged fragments only (Shift+Space)'}
             >{isPlaying && playbackMode === 'approver' ? '⏸' : '▶┊▶'}</button>
           {/if}
+          <div class="janky-controls" role="group" aria-label="Janky playback" title={jankyTitle}>
+            <label class="janky-label" for="janky-slider">Janky</label>
+            <input
+              id="janky-slider"
+              class="janky-slider"
+              type="range"
+              min="0"
+              max="9"
+              step="1"
+              bind:value={jankyLevel}
+              aria-valuetext={jankyLevel === 0 ? '0, smooth' : `${jankyLevel}, ${jankyTitle}`}
+            />
+            <fieldset class="janky-unit-switch" aria-label="Janky base unit">
+              <label class="janky-unit-option" class:active={jankyUnitSec === 0.5}>
+                <input type="radio" name="janky-unit" value={0.5} bind:group={jankyUnitSec} />
+                <span>0.5s</span>
+              </label>
+              <label class="janky-unit-option" class:active={jankyUnitSec === 1}>
+                <input type="radio" name="janky-unit" value={1} bind:group={jankyUnitSec} />
+                <span>1s</span>
+              </label>
+            </fieldset>
+          </div>
           <span class="mini-time">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
-          {#if editingAccess}
-            <span class="hint">Drag on the waveform to select a fragment · click a fragment to edit it · Delete removes the selection</span>
-          {/if}
           <div class="player-tool-controls">
             <div class="wave-zoom-controls" role="group" aria-label="Horizontal waveform zoom">
               <span class="zoom-label">Zoom</span>
@@ -2020,6 +2075,7 @@
         {/if}
 
         {#if editingAccess}
+          <div class="waveform-edit-hint">Drag on the waveform to select a fragment · click a fragment to edit it · Delete removes the selection</div>
           <div class="shortcuts-hint">Use shortcuts! [Space] Play/Pause · [Shift]+[Space] Tagged fragments only · [+][−][0] Zoom · [Delete] Remove fragment · [↑][↓] or [Q][W] Navigate · [←][→] Focus fragment · [Enter] Apply · [Shift]+[label] Relabel all fragments + sample</div>
         {/if}
 
@@ -2824,13 +2880,56 @@
   .approver-play-btn.active { border-color: #666; color: #333; opacity: 1; }
   .approver-play-btn:disabled { cursor: default; opacity: 0.25; }
   .mini-time { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #666; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-  .hint { flex: 1 1 18rem; font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; }
   .player-tool-controls {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     margin-left: auto;
   }
+  .janky-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #777;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+  }
+  .janky-slider {
+    width: 6rem;
+    accent-color: #555;
+    cursor: pointer;
+  }
+  .janky-unit-switch {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 2px;
+    border: 1px solid #d0d0ca;
+    border-radius: 5px;
+    background: #efefeb;
+  }
+  .janky-unit-option {
+    position: relative;
+    cursor: pointer;
+  }
+  .janky-unit-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .janky-unit-option span {
+    display: block;
+    padding: 0.18rem 0.42rem;
+    border-radius: 3px;
+    color: #777;
+    font-weight: 700;
+    line-height: normal;
+  }
+  .janky-unit-option:hover span { color: #222; }
+  .janky-unit-option.active span { background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .janky-unit-option input:focus-visible + span { outline: 2px solid rgba(74, 124, 220, 0.35); outline-offset: 1px; }
   .wave-zoom-controls {
     display: inline-flex;
     align-items: center;
@@ -3028,7 +3127,10 @@
   }
   .note-delete-btn:hover { opacity: 0.7; }
   .notes-empty { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; padding: 0.2rem 0; }
-  .shortcuts-hint { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; margin-top: 0.6rem; line-height: 1.5; }
+  .waveform-edit-hint,
+  .shortcuts-hint { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #aaa; line-height: 1.5; }
+  .waveform-edit-hint { margin-top: 0.6rem; }
+  .shortcuts-hint { margin-top: 0.1rem; }
   .bulk-relabel-status { font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #666; margin: 0.45rem 0; }
 
   /* ── Out-of-bounds fragments panel ── */
