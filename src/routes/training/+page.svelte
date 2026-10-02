@@ -16,12 +16,12 @@
   import {
     FIT_WAVEFORM_SECONDS_PER_PIXEL,
     MIN_WAVEFORM_SECONDS_PER_PIXEL,
-    centeredWaveformScrollLeft,
     formatWaveformSecondsPerPixel,
     stepWaveformSecondsPerPixel,
     waveformBarBackingWidth,
     waveformContentWidth,
     waveformFitSecondsPerPixel,
+    waveformPlayheadScrollLeft,
     waveformRangeScrollLeft,
     waveformZoomScale,
     zoomInvariantSvgWidth,
@@ -503,18 +503,17 @@
     if (nextSecondsPerPixel === waveSecondsPerPixel) return;
 
     const scrollEl = waveScrollEl;
-    const oldScrollLeft = scrollEl?.scrollLeft ?? 0;
     const viewportWidth = scrollEl?.clientWidth ?? 0;
-    const oldContentWidth = scrollEl?.scrollWidth ?? viewportWidth;
+    const playheadSec = audioEl?.currentTime ?? currentTime;
 
     waveSecondsPerPixel = nextSecondsPerPixel;
     await tick();
 
     if (!scrollEl) return;
-    scrollEl.scrollLeft = centeredWaveformScrollLeft(
-      oldScrollLeft,
+    scrollEl.scrollLeft = waveformPlayheadScrollLeft(
+      playheadSec,
+      duration,
       viewportWidth,
-      oldContentWidth,
       scrollEl.scrollWidth,
     );
   }
@@ -1416,12 +1415,12 @@
 
   function handleKeydown(e) {
     const inField = e.target?.tagName === 'INPUT' || e.target?.tagName === 'SELECT' || e.target?.tagName === 'TEXTAREA';
+    const inNoteEditor = Boolean(e.target?.closest?.('.note-input'));
 
     // Playback remains global even while an input, slider, radio, select, or
-    // button owns focus, including while another editor state is active.
-    // Prevent the focused control's normal Space action so one keypress only
-    // toggles the requested playback mode.
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === ' ') {
+    // button owns focus. Note editors are the exception: Space must retain its
+    // normal text-entry behaviour while the user writes or edits a note.
+    if (!inNoteEditor && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === ' ') {
       e.preventDefault();
       if (!e.repeat) {
         if (e.shiftKey) void toggleApproverPlay();

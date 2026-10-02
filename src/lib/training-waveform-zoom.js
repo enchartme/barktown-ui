@@ -75,6 +75,23 @@ export function centeredWaveformScrollLeft(scrollLeft, viewportWidth, oldContent
 }
 
 /**
+ * Centre the playback position after a waveform zoom. At either end of the
+ * recording the scroll position is clamped, leaving the playhead naturally
+ * closer to that edge instead of introducing blank space.
+ */
+export function waveformPlayheadScrollLeft(
+  currentSec,
+  durationSec,
+  viewportWidth,
+  contentWidth,
+) {
+  if (viewportWidth <= 0 || contentWidth <= viewportWidth || !(durationSec > 0)) return 0;
+  const playheadFraction = Math.max(0, Math.min(1, currentSec / durationSec));
+  const nextScrollLeft = playheadFraction * contentWidth - viewportWidth / 2;
+  return Math.max(0, Math.min(contentWidth - viewportWidth, nextScrollLeft));
+}
+
+/**
  * Return the smallest horizontal scroll adjustment that brings a timeline
  * range into view. If the range is wider than the usable viewport, centre the
  * supplied focus point instead.

@@ -9,6 +9,7 @@ import {
   waveformBarBackingWidth,
   waveformContentWidth,
   waveformFitSecondsPerPixel,
+  waveformPlayheadScrollLeft,
   waveformRangeScrollLeft,
   waveformZoomScale,
   zoomInvariantSvgWidth,
@@ -51,6 +52,13 @@ test('waveform zoom scroll position is clamped at the timeline edges', () => {
   assert.equal(centeredWaveformScrollLeft(0, 500, 1000, 2000), 250);
   assert.equal(centeredWaveformScrollLeft(500, 500, 1000, 2000), 1250);
   assert.equal(centeredWaveformScrollLeft(500, 500, 1000, 500), 0);
+});
+
+test('waveform zoom centres the playhead and clamps it near timeline edges', () => {
+  assert.equal(waveformPlayheadScrollLeft(50, 100, 500, 2000), 750);
+  assert.equal(waveformPlayheadScrollLeft(5, 100, 500, 2000), 0);
+  assert.equal(waveformPlayheadScrollLeft(95, 100, 500, 2000), 1500);
+  assert.equal(waveformPlayheadScrollLeft(50, 100, 500, 500), 0);
 });
 
 test('waveform review focus minimally scrolls a fragment into view', () => {
