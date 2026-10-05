@@ -343,6 +343,8 @@
   /** @type {{ mins: number[], maxs: number[], norm: number }|null} */
   let waveData        = $state(null);
   let waveLoading      = $state(false);
+  let waveformLoadFailed = $state(false);
+  let waveformRequestId = 0;
   /** @type {Map<string, any>} */
   const waveCache      = new Map();
   /** @type {SVGSVGElement|null} */
@@ -404,6 +406,8 @@
   let renameBusy    = $state(false);
   let renameError   = $state('');
   let bulkRelabelBusy = $state(false);
+  let waveformRepairBusy  = $state(false);
+  let waveformRepairError = $state('');
   let reanalyzeConfirm   = $state(false);
   let reanalyzeBusy      = $state(false);
   let reanalyzeThreshold = $state(0.9);
@@ -587,27 +591,101 @@
 
   // ── Data loading ────────────────────────────────────────────────────────────
 
-  async function loadWaveform(path) {
-    if (!path) { waveData = null; return; }
-    const cached = waveCache.get(path);
-    if (cached === 'error') { waveData = null; return; }
-    if (cached) { waveData = cached; return; }
+  async function loadWaveform(path, { force = false } = {}) {
+    const requestId = ++waveformRequestId;
+    waveformLoadFailed = false;
+    if (!path) {
+      waveLoading = false;
+      waveData = null;
+      waveformLoadFailed = true;
+      return null;
+    }
+    const cached = force ? null : waveCache.get(path);
+    if (cached === 'error') {
+      waveLoading = false;
+      waveData = null;
+      waveformLoadFailed = true;
+      return null;
+    }
+    if (cached) {
+      waveLoading = false;
+      waveData = cached;
+      return cached;
+    }
     waveLoading = true;
     try {
-      const res = await fetch(`${ASSET_BASE}/${path}`, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error();
+      const assetUrl = `${ASSET_BASE}/${path}${force ? `?repair=${Date.now()}` : ''}`;
+      const res = await fetch(assetUrl, {
+        cache: force ? 'no-store' : 'default',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json  = await res.json();
       const norm  = waveformNorm(json.bits ?? 8);
       const totalBars = Math.floor(json.data.length / 2);
       const ds    = downsampleWaveform(json.data, Math.min(6000, totalBars));
       const result = { mins: ds.mins, maxs: ds.maxs, norm };
       waveCache.set(path, result);
-      waveData = result;
+      if (requestId === waveformRequestId) {
+        waveData = result;
+        waveformLoadFailed = false;
+      }
+      return result;
     } catch (_e) {
       waveCache.set(path, 'error');
-      waveData = null;
+      if (requestId === waveformRequestId) {
+        waveData = null;
+        waveformLoadFailed = true;
+      }
+      return null;
     } finally {
-      waveLoading = false;
+      if (requestId === waveformRequestId) waveLoading = false;
+    }
+  }
+
+  async function repairWaveform() {
+    if (
+      !editingAccess || !selected || waveformRepairBusy || reanalyzeBusy
+      || renameBusy || deleteBusy || bulkRelabelBusy || reanalyzeConfirm || deleteConfirm
+    ) return;
+    const sample = selected;
+    waveformRepairBusy = true;
+    waveformRepairError = '';
+    try {
+      const res = await fetch(
+        `${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(sample.id)}/regenerate-waveform`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pixelsPerSecond: 100 }),
+          signal: AbortSignal.timeout(60000),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      if (typeof data?.waveformPath !== 'string' || !data.waveformPath) {
+        throw new Error('Repair response did not include a waveform path');
+      }
+
+      const repairedSample = { ...sample, waveformPath: data.waveformPath };
+      samples = samples.map(item => item.id === sample.id ? repairedSample : item);
+      waveCache.delete(sample.waveformPath);
+      waveCache.delete(data.waveformPath);
+
+      if (selected?.id !== sample.id) return;
+      selected = repairedSample;
+      const repairedWaveform = await loadWaveform(data.waveformPath, { force: true });
+      if (!repairedWaveform && selected?.id === sample.id) {
+        throw new Error('Waveform was rebuilt but could not be loaded');
+      }
+    } catch (e) {
+      if (selected?.id === sample.id) {
+        waveformRepairError = e?.name === 'TimeoutError'
+          ? 'Waveform repair timed out'
+          : (e?.message ?? 'Failed to repair waveform');
+      }
+    } finally {
+      waveformRepairBusy = false;
     }
   }
 
@@ -652,6 +730,7 @@
     pending        = null;
     dragMode       = null;
     mutationError  = '';
+    waveformRepairError = '';
     reanalyzeConfirm = false;
     reanalyzeThreshold = 0.9;
     reanalyzeError = '';
@@ -689,7 +768,11 @@
     pending          = null;
     dragMode         = null;
     mutationError    = '';
+    waveformRepairError = '';
     waveData         = null;
+    waveformRequestId += 1;
+    waveLoading      = false;
+    waveformLoadFailed = false;
     reanalyzeConfirm = false;
     reanalyzeThreshold = 0.9;
     reanalyzeError = '';
@@ -1247,7 +1330,7 @@
   // ── Sample-level mutations ─────────────────────────────────────────────────
 
   function openReanalyzeConfirm() {
-    if (!editingAccess || !selected || reanalyzeBusy) return;
+    if (!editingAccess || !selected || reanalyzeBusy || waveformRepairBusy) return;
     deleteConfirm = false;
     reanalyzeError = '';
     reanalyzeConfirm = true;
@@ -1259,7 +1342,7 @@
   }
 
   async function confirmReanalyzeSample() {
-    if (!editingAccess || !selected || !reanalyzeConfirm || reanalyzeBusy) return;
+    if (!editingAccess || !selected || !reanalyzeConfirm || reanalyzeBusy || waveformRepairBusy) return;
     const sample = selected;
     reanalyzeConfirm = false;
     reanalyzeBusy = true;
@@ -1294,7 +1377,7 @@
   }
 
   async function confirmDeleteSample() {
-    if (!editingAccess || reanalyzeBusy || !selected) return;
+    if (!editingAccess || reanalyzeBusy || waveformRepairBusy || !selected) return;
     deleteBusy = true;
     try {
       const res = await fetch(`${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(selected.id)}`, {
@@ -1312,7 +1395,7 @@
   }
 
   async function changeCategory(newLabel) {
-    if (!editingAccess || reanalyzeBusy || bulkRelabelBusy || !selected || newLabel === selected.label) return;
+    if (!editingAccess || reanalyzeBusy || waveformRepairBusy || bulkRelabelBusy || !selected || newLabel === selected.label) return;
     renameBusy  = true;
     renameError = '';
     try {
@@ -1341,7 +1424,7 @@
   /** Shift + a label hotkey reclassifies every fragment in the open sample,
    * then changes the sample category. Notes are deliberately left alone. */
   async function relabelAllFragmentsAndSample(newLabel) {
-    if (!editingAccess || !selected || reanalyzeBusy || renameBusy || bulkRelabelBusy || !LABELS.includes(newLabel)) return;
+    if (!editingAccess || !selected || reanalyzeBusy || waveformRepairBusy || renameBusy || bulkRelabelBusy || !LABELS.includes(newLabel)) return;
 
     const sample = selected;
     const fragments = fragmentRelabelTargets(annotations, newLabel);
@@ -1746,7 +1829,7 @@
           {#if editingAccess}
             <label class="category-control">
               <span>Category</span>
-              <select value={selected.label} disabled={renameBusy || reanalyzeBusy || bulkRelabelBusy} onchange={(e) => changeCategory(e.currentTarget.value)}>
+              <select value={selected.label} disabled={renameBusy || reanalyzeBusy || waveformRepairBusy || bulkRelabelBusy} onchange={(e) => changeCategory(e.currentTarget.value)}>
                 {#each LABELS as lbl}
                   <option value={lbl}>{lbl}</option>
                 {/each}
@@ -1755,14 +1838,14 @@
 
             <button
               class="reanalyze-btn"
-              disabled={reanalyzeBusy || renameBusy || deleteBusy || bulkRelabelBusy}
+              disabled={reanalyzeBusy || waveformRepairBusy || renameBusy || deleteBusy || bulkRelabelBusy}
               onclick={openReanalyzeConfirm}
               title="Replace bark, review, and yap fragments using the current classifier"
             >{reanalyzeBusy ? 'Analyzing…' : 'Re-analyze'}</button>
 
             <button
               class="danger-btn"
-              disabled={reanalyzeBusy || bulkRelabelBusy}
+              disabled={reanalyzeBusy || waveformRepairBusy || bulkRelabelBusy}
               onclick={() => { reanalyzeConfirm = false; deleteConfirm = true; }}
             >Delete sample</button>
           {/if}
@@ -1770,6 +1853,7 @@
 
         {#if editingAccess && renameError}<div class="error-msg">{renameError}</div>{/if}
         {#if editingAccess && reanalyzeError}<div class="error-msg">{reanalyzeError}</div>{/if}
+        {#if editingAccess && waveformRepairError}<div class="error-msg">{waveformRepairError}</div>{/if}
         {#if editingAccess && bulkRelabelBusy}<div class="bulk-relabel-status" role="status">Updating every fragment and the sample label…</div>{/if}
 
         {#if editingAccess && deleteConfirm}
@@ -1865,6 +1949,15 @@
           </div>
           <span class="mini-time">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
           <div class="player-tool-controls">
+            {#if editingAccess && waveformLoadFailed}
+              <button
+                class="waveform-repair-btn"
+                type="button"
+                disabled={waveformRepairBusy || reanalyzeBusy || renameBusy || deleteBusy || bulkRelabelBusy || reanalyzeConfirm || deleteConfirm}
+                title="Rebuild this sample's waveform and repair its stored reference"
+                onclick={repairWaveform}
+              >{waveformRepairBusy ? 'Fixing waveform…' : 'Fix waveform'}</button>
+            {/if}
             <div class="wave-zoom-controls" role="group" aria-label="Horizontal waveform zoom">
               <span class="zoom-label">Zoom</span>
               <button
@@ -2885,6 +2978,20 @@
     gap: 0.6rem;
     margin-left: auto;
   }
+  .waveform-repair-btn {
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
+    padding: 0.2rem 0.5rem;
+    border: 1px solid #c88a30;
+    border-radius: 4px;
+    background: #fff5df;
+    color: #754b12;
+    cursor: pointer;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .waveform-repair-btn:hover:not(:disabled) { background: #ffe9bd; }
+  .waveform-repair-btn:disabled { opacity: 0.5; cursor: default; }
   .janky-controls {
     display: inline-flex;
     align-items: center;
