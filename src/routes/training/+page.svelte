@@ -403,6 +403,8 @@
   // ── Sample-level mutation state ────────────────────────────────────────────
   let deleteConfirm = $state(false);
   let deleteBusy    = $state(false);
+  let downloadBusy  = $state(false);
+  let downloadError = $state('');
   let renameBusy    = $state(false);
   let renameError   = $state('');
   let bulkRelabelBusy = $state(false);
@@ -730,6 +732,7 @@
     pending        = null;
     dragMode       = null;
     mutationError  = '';
+    downloadError  = '';
     waveformRepairError = '';
     reanalyzeConfirm = false;
     reanalyzeThreshold = 0.9;
@@ -768,6 +771,7 @@
     pending          = null;
     dragMode         = null;
     mutationError    = '';
+    downloadError    = '';
     waveformRepairError = '';
     waveData         = null;
     waveformRequestId += 1;
@@ -825,6 +829,29 @@
 
   function audioSrc(sample) {
     return `${ASSET_BASE}/${encodeURIComponent(sample.audioPath).replace(/%2F/g, '/')}`;
+  }
+
+  async function downloadSample() {
+    if (!editingAccess || !selected || downloadBusy) return;
+    const sample = selected;
+    downloadBusy = true;
+    downloadError = '';
+    try {
+      const res = await fetch(audioSrc(sample));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blobUrl = URL.createObjectURL(await res.blob());
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = sample.filename || sample.audioPath.split('/').at(-1) || `${sample.id}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+    } catch (e) {
+      if (selected?.id === sample.id) downloadError = e?.message ?? 'Failed to download sample';
+    } finally {
+      downloadBusy = false;
+    }
   }
 
   function applyPendingSeek() {
@@ -1827,6 +1854,14 @@
           {/if}
 
           {#if editingAccess}
+            <button
+              class="download-btn"
+              disabled={downloadBusy}
+              onclick={downloadSample}
+              aria-label="Download sample WAV"
+              title={`Download ${selected.filename || 'sample WAV'}`}
+            >{downloadBusy ? '⏳' : '📥'}</button>
+
             <label class="category-control">
               <span>Category</span>
               <select value={selected.label} disabled={renameBusy || reanalyzeBusy || waveformRepairBusy || bulkRelabelBusy} onchange={(e) => changeCategory(e.currentTarget.value)}>
@@ -1851,6 +1886,7 @@
           {/if}
         </div>
 
+        {#if editingAccess && downloadError}<div class="error-msg">Download failed: {downloadError}</div>{/if}
         {#if editingAccess && renameError}<div class="error-msg">{renameError}</div>{/if}
         {#if editingAccess && reanalyzeError}<div class="error-msg">{reanalyzeError}</div>{/if}
         {#if editingAccess && waveformRepairError}<div class="error-msg">{waveformRepairError}</div>{/if}
@@ -2842,6 +2878,20 @@
     margin-left: 0.15rem;
   }
   .cross-link-btn:hover { background: #e8f4ff; border-color: #b0d0f0; }
+
+  .download-btn {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    background: none;
+    color: #aaa;
+    font-size: var(--font-size-medium);
+    line-height: 1;
+    cursor: pointer;
+  }
+  .download-btn:hover:not(:disabled) { background: #e8f4ff; color: #2255bb; }
+  .download-btn:disabled { cursor: default; opacity: 0.5; }
 
   .category-control {
     display: flex;
