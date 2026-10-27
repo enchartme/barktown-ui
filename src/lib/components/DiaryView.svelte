@@ -282,7 +282,7 @@
 
 <div class="app">
   {#if !embedded}<header class="site-header">
-    <h1>🐕 Barktown</h1>
+    <h1><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</h1>
     <button
       class="subtitle recordings-toggle"
       class:active={showOverview}

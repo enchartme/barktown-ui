@@ -402,7 +402,7 @@
 
 <div class="app" class:print-layout={printMode} style={`--diary-night: ${DIARY_NIGHT_COLOR}`}>
   {#if !embedded}<header class="site-header screen-only">
-    <a class="brand" href="/">🐕 Barktown</a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</a>
     <nav aria-label="Barktown views">
       <a href="/diary">Diary</a>
       <a class="current" aria-current="page" href="/report">Report</a>

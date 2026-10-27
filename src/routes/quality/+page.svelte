@@ -124,7 +124,7 @@
 
 <div class="app">
   <header class="site-header">
-    <a class="brand" href="/">🐕 Barktown</a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</a>
     <nav aria-label="Barktown views">
       <a href="/diary">Diary</a>
       <a href="/report">Report</a>

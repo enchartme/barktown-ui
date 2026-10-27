@@ -199,7 +199,7 @@
 
 <div class="page-shell">
   {#if !embedded}<header class="site-header">
-    <a class="brand" href="/">🐕 Barktown</a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</a>
     <nav aria-label="Barktown views">
       <a href="/diary">Diary</a>
       <a href="/report">Report</a>
@@ -334,7 +334,7 @@
   </main>
 
   {#if !embedded}<footer>
-    <a class="brand" href="/">🐕 Barktown</a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</a>
     <p>Document the method. Preserve the recording. Keep the conclusion reviewable.</p>
     <a class="top-link" href="#method-title">Back to top ↑</a>
   </footer>{/if}

@@ -5,7 +5,7 @@
 
 <main class="intro">
   <section class="intro-card">
-    <p class="eyebrow">🐕 Barktown</p>
+    <p class="eyebrow"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</p>
     <h1>Project «Barktown»</h1>
     <p class="lede">Bark disturbance diary</p>
 
