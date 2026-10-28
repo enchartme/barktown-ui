@@ -10,6 +10,7 @@ import {
   waveformContentWidth,
   waveformFitSecondsPerPixel,
   waveformPlayheadScrollLeft,
+  waveformRangeIsFullyVisible,
   waveformRangeScrollLeft,
   waveformZoomScale,
   zoomInvariantSvgWidth,
@@ -70,6 +71,13 @@ test('waveform review focus minimally scrolls a fragment into view', () => {
 test('waveform review focus centres an oversized fragment on its suspect window', () => {
   assert.equal(waveformRangeScrollLeft(0, 500, 2000, 400, 1100, 800), 550);
   assert.equal(waveformRangeScrollLeft(0, 500, 500, 400, 500, 450), 0);
+});
+
+test('waveform fragment visibility requires both range edges in the viewport', () => {
+  assert.equal(waveformRangeIsFullyVisible(500, 500, 2000, 550, 950), true);
+  assert.equal(waveformRangeIsFullyVisible(500, 500, 2000, 499, 950), false);
+  assert.equal(waveformRangeIsFullyVisible(500, 500, 2000, 550, 1001), false);
+  assert.equal(waveformRangeIsFullyVisible(0, 500, 500, 0, 500), true);
 });
 
 test('waveform primitives retain their visual width while the timeline zooms', () => {

@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fragmentSelectionAfterDelete } from '../src/lib/training-fragment-selection.js';
+import {
+  adjacentFragmentSelectionId,
+  fragmentSelectionAfterDelete,
+} from '../src/lib/training-fragment-selection.js';
 
 const annotations = [
   { id: 3, source: 'manual', startSec: 30 },
@@ -29,4 +32,14 @@ test('deleting the only fragment clears selection', () => {
 test('notes and unknown ids are not fragment-selection candidates', () => {
   assert.equal(fragmentSelectionAfterDelete(annotations, 99), null);
   assert.equal(fragmentSelectionAfterDelete(annotations, 404), null);
+});
+
+test('fragment navigation wraps in both directions', () => {
+  assert.equal(adjacentFragmentSelectionId(annotations, 3, 1), 1);
+  assert.equal(adjacentFragmentSelectionId(annotations, 1, -1), 3);
+});
+
+test('fragment navigation starts at the directional edge without a selection', () => {
+  assert.equal(adjacentFragmentSelectionId(annotations, null, 1), 1);
+  assert.equal(adjacentFragmentSelectionId(annotations, null, -1), 3);
 });

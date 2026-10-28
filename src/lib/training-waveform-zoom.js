@@ -127,6 +127,24 @@ export function waveformRangeScrollLeft(
   return Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
 }
 
+/** Whether an entire timeline range is currently visible in the viewport. */
+export function waveformRangeIsFullyVisible(
+  scrollLeft,
+  viewportWidth,
+  contentWidth,
+  rangeStart,
+  rangeEnd,
+) {
+  if (viewportWidth <= 0) return false;
+  if (contentWidth <= viewportWidth) return true;
+  const maxScrollLeft = contentWidth - viewportWidth;
+  const visibleStart = Math.max(0, Math.min(maxScrollLeft, scrollLeft));
+  const visibleEnd = visibleStart + viewportWidth;
+  const start = Math.max(0, Math.min(contentWidth, Math.min(rangeStart, rangeEnd)));
+  const end = Math.max(start, Math.min(contentWidth, Math.max(rangeStart, rangeEnd)));
+  return start >= visibleStart && end <= visibleEnd;
+}
+
 /** Keep a horizontal SVG measurement visually unchanged as its timeline zooms. */
 export function zoomInvariantSvgWidth(baseWidth, zoom) {
   return baseWidth / Math.max(1, zoom);

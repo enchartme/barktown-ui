@@ -13,7 +13,7 @@
     withRecordingCommentAnnotations,
   } from '$lib/recording-comments.js';
   import { formatPrintReportRange, reportBounds } from '$lib/report-range.js';
-  import { adjacentReportEntry } from '$lib/report-navigation.js';
+  import { adjacentReportEntry, reportWeekForEntryId } from '$lib/report-navigation.js';
   import { formatDisturbedTime } from '$lib/report-summary.js';
   import { withLinkedTrainingSample } from '$lib/diary-samples.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
@@ -361,9 +361,13 @@
     recordingOrder = url.searchParams.get('recordings') === 'desc' ? 'desc' : 'asc';
     rangeWeeks = url.searchParams.get('weeks') === '2' ? 2 : 1;
 
+    const selectedId = window.location.hash.slice(1);
+    const selectedWeek = reportWeekForEntryId(selectedId);
     const requestedWeek = url.searchParams.get('week');
     if (requestedWeek && isIsoDate(requestedWeek)) {
       reportWeekStart = startOfIsoWeek(requestedWeek);
+    } else if (selectedWeek) {
+      reportWeekStart = selectedWeek;
     } else {
       try {
         const latestDate = await fetchLatestDiaryDate();
@@ -378,7 +382,6 @@
     updateReportUrl();
     await loadReport(reportWeekStart);
 
-    const selectedId = window.location.hash.slice(1);
     const selected = entries.find((entry) => entry.id === selectedId && entry.kind === 'audio');
     if (selected) {
       panelEntry = selected;

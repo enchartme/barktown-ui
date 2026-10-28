@@ -22,11 +22,13 @@
     waveformContentWidth,
     waveformFitSecondsPerPixel,
     waveformPlayheadScrollLeft,
+    waveformRangeIsFullyVisible,
     waveformRangeScrollLeft,
     waveformZoomScale,
     zoomInvariantSvgWidth,
   } from '$lib/training-waveform-zoom.js';
-  import { fragmentSelectionAfterDelete } from '$lib/training-fragment-selection.js';
+  import { adjacentFragmentSelectionId, fragmentSelectionAfterDelete } from '$lib/training-fragment-selection.js';
+  import { reportEntryHref } from '$lib/report-navigation.js';
   import { loadTrainingProjectionPoints } from '$lib/training-projection-data.js';
   import {
     WINDOW_REVIEW_ACTIONS,
@@ -549,6 +551,29 @@
     }
   }
 
+  function centerWaveformOnFragment(fragment) {
+    const scrollEl = waveScrollEl;
+    if (!fragment || !scrollEl || duration <= 0 || scrollEl.scrollWidth <= scrollEl.clientWidth) return;
+    const pxPerSec = scrollEl.scrollWidth / duration;
+    if (waveformRangeIsFullyVisible(
+      scrollEl.scrollLeft,
+      scrollEl.clientWidth,
+      scrollEl.scrollWidth,
+      fragment.startSec * pxPerSec,
+      fragment.endSec * pxPerSec,
+    )) return;
+    const fragmentMidpointSec = (fragment.startSec + fragment.endSec) / 2;
+    const nextScrollLeft = waveformPlayheadScrollLeft(
+      fragmentMidpointSec,
+      duration,
+      scrollEl.clientWidth,
+      scrollEl.scrollWidth,
+    );
+    if (nextScrollLeft !== scrollEl.scrollLeft) {
+      scrollEl.scrollTo({ left: nextScrollLeft, behavior: 'smooth' });
+    }
+  }
+
   /** Live preview of an annotation's bounds while it's being dragged. */
   function previewBounds(ann) {
     if (!(dragMode && dragAnnId === ann.id)) return { startSec: ann.startSec, endSec: ann.endSec };
@@ -810,21 +835,17 @@
   const sortedFragments = $derived(renderFragments.slice().sort((a, b) => a.startSec - b.startSec));
 
   /** Arrow left/right: move focus to the previous/next fragment of the
-   * selected sample, so its label/boundaries can be edited. No wraparound;
-   * if nothing is focused yet, right picks the first fragment and left
-   * picks the last. */
+   * selected sample, wrapping at both ends. If nothing is focused yet,
+   * right picks the first fragment and left picks the last. */
   function selectAdjacentFragment(delta) {
     if (!editingAccess || reanalyzeBusy) return;
     const list = sortedFragments;
     if (!list.length) return;
-    const idx = list.findIndex(f => f.id === selectedAnnId);
-    if (idx === -1) {
-      selectedAnnId = (delta > 0 ? list[0] : list[list.length - 1]).id;
-      return;
-    }
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= list.length) return;
-    selectedAnnId = list[nextIdx].id;
+    const nextId = adjacentFragmentSelectionId(list, selectedAnnId, delta);
+    const fragment = list.find(item => item.id === nextId);
+    if (!fragment) return;
+    selectedAnnId = fragment.id;
+    centerWaveformOnFragment(fragment);
   }
 
   function audioSrc(sample) {
@@ -1850,7 +1871,11 @@
           <span class="editor-title">{formatSampleDatetime(selected.datetimeLocal, { seconds: true })}</span>
           <span class="editor-dur">{formatDuration(selected.durationSec)}</span>
           {#if selected.diaryId}
-            <a class="cross-link-btn" href="/diary#{selected.diaryId}" title="View source diary entry">📖</a>
+            <a
+              class="cross-link-btn"
+              href={reportEntryHref(selected.diaryId)}
+              title="View source report entry"
+            >📖</a>
           {/if}
 
           {#if editingAccess}
