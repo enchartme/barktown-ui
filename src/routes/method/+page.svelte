@@ -203,7 +203,7 @@
     <nav aria-label="Barktown views">
       <a href="/diary">Diary</a>
       <a href="/report">Report</a>
-      <a href="/training">Training</a>
+      {#if operatorAccess}<a href="/training">Training</a>{/if}
       {#if operatorAccess}<a href="/quality">Quality</a>{/if}
       <a class="current" aria-current="page" href="/method">Method</a>
     </nav>

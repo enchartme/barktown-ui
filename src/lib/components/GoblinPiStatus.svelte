@@ -2,7 +2,7 @@
   import { env } from '$env/dynamic/public';
   import { onMount, onDestroy } from 'svelte';
   import { goblinHostLabel, resolveGoblinBaseUrl } from '$lib/goblin-config.js';
-  import { PRIVATE_API_BASE, PUBLIC_API_BASE, formatDuration, formatSampleDatetime } from '$lib/utils.js';
+  import { PRIVATE_API_BASE, formatDuration, formatSampleDatetime } from '$lib/utils.js';
   import { SAMPLE_LABELS as LABELS, sampleLabelColor } from '$lib/sample-labels.js';
   import {
     fetchMonitorParams,
@@ -15,7 +15,7 @@
   const HOSTNAME       = new URL(BASE_URL).hostname;
   const HOST_LABEL     = goblinHostLabel(BASE_URL);
   const STATUS_URL     = `${BASE_URL}/status`;
-  const SAMPLES_URL    = `${PUBLIC_API_BASE}/api/samples`;
+  const SAMPLES_URL    = `${PRIVATE_API_BASE}/api/samples`;
   const POLL_OPEN_MS   = 1_000;
   const POLL_CLOSED_MS = 10_000;
   const RECENT_SAMPLES_COUNT = 5;

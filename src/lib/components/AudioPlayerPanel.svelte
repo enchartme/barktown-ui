@@ -1088,7 +1088,7 @@
             : 'Source WAV is not available for re-analysis'}
         >{reanalyzeLoading ? '⏳' : '🔁'}</button>
       {/if}
-      {#if entry.sampleId}
+      {#if editingAccess && entry.sampleId}
         <a class="cross-link-btn" href="/training#{entry.sampleId}" title="View linked training sample">🔬</a>
       {/if}
       {#if editingAccess && ondelete}

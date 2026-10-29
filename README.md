@@ -139,6 +139,13 @@ recording, monitor, and machine-control requests. Set it in `.env` for local
 development or as a public runtime variable in the Cloudflare Worker. When it
 is unset, the Gawblen Tailnet URL remains the default.
 
+Training metadata is available only through `PRIVATE_API_BASE` on the Tailnet.
+The `/training` page checks private API reachability before loading its samples,
+annotations or projection CSV. Training navigation links appear after the same
+check succeeds. Public diary/report comments use diary endpoints, without the
+private training annotation feed. Audio and projection storage permissions
+remain unchanged.
+
 ### 6 — Build
 
 ```bash

@@ -102,8 +102,8 @@ test('legacy diary responses fetch inherited notes while current responses do no
   let fetchCalls = 0;
   const fetchImpl = async (url) => {
     fetchCalls += 1;
-    assert.equal(url, 'https://api.example/api/annotations');
-    return { ok: true, json: async () => [annotation] };
+    assert.equal(url, 'https://api.example/api/diary/diary-sample');
+    return { ok: true, json: async () => ({ annotations: [annotation] }) };
   };
 
   const legacy = await hydrateRecordingCommentAnnotations(

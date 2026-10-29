@@ -146,7 +146,7 @@ test('audio panel shows readable analysis parameters in display order', () => {
         },
       },
     }),
-    `Model info · Trigger: manual · Trained: ${localTrainedAt} · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s`,
+    `Trigger: manual · Trained: ${localTrainedAt} · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s`,
   );
 });
 
@@ -158,7 +158,7 @@ test('audio panel analysis parameters omit missing values and retain zero', () =
         monitor: { candidate_threshold: 0, hit_refractory_s: undefined },
       },
     }),
-    'Model info · Threshold: 0',
+    'Threshold: 0',
   );
   assert.equal(formatAudioPanelAnalysisParameters(null), '');
   assert.equal(formatAudioPanelAnalysisParameters({ analysisSettings: {} }), '');

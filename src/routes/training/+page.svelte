@@ -4,7 +4,6 @@
   import {
     ASSET_BASE,
     PRIVATE_API_BASE,
-    PUBLIC_API_BASE,
     downsampleWaveform,
     waveformNorm,
     formatDuration,
@@ -46,9 +45,9 @@
   import TrainingProjectionScatterplot from '$lib/components/TrainingProjectionScatterplot.svelte';
   import { isEmbeddedLayout } from '$lib/embed.js';
 
-  // Sample and annotation reads use the anonymous public API. Mutations still
-  // go directly to masmopi over Tailscale, using the same no-auth trust model
-  // as GoblinPiStatus.svelte. Audio/waveform bytes remain on ASSET_BASE.
+  // All training metadata uses masmopi's Tailnet-only API. No training data
+  // or projection assets are requested until the browser can reach it.
+  // Audio/waveform bytes remain on ASSET_BASE.
   //
   // masmopi (Pi 5, ingestion + API host), NOT gawblen (Pi 3B+, mic capture
   // only — gawblen just uploads to masmopi and has no ingest API of its own).
@@ -58,6 +57,7 @@
 
   /** Tailnet-only mutation controls appear after the private API responds. */
   let editingAccess = $state(false);
+  let checkingAccess = $state(true);
 
   // Virtual SVG dimensions for the waveform editor (viewBox units).
   const VW = 1000;
@@ -230,7 +230,7 @@
     samplesLoading = true;
     samplesError   = '';
     try {
-      const res = await fetch(`${PUBLIC_API_BASE}/api/samples`, { signal: AbortSignal.timeout(8000) });
+      const res = await fetch(`${PRIVATE_API_BASE}/api/samples`, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       samples = [...data].sort((a, b) => b.datetimeLocal.localeCompare(a.datetimeLocal));
@@ -255,7 +255,7 @@
    * you work on the currently selected sample. */
   async function fetchSidebarAnnotationSummary() {
     try {
-      const res = await fetch(`${PUBLIC_API_BASE}/api/annotations`, { signal: AbortSignal.timeout(8000) });
+      const res = await fetch(`${PRIVATE_API_BASE}/api/annotations`, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return;
       const rows = await res.json();
       allAnnotations = rows.filter(annotation => annotation.source !== 'note');
@@ -720,7 +720,7 @@
     annotationsLoading = true;
     annotationsError   = '';
     try {
-      const res = await fetch(`${PUBLIC_API_BASE}/api/samples/${encodeURIComponent(sampleId)}/annotations`, {
+      const res = await fetch(`${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(sampleId)}/annotations`, {
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1648,22 +1648,24 @@
   onMount(() => {
     let disposed = false;
     void probeEditingAccess().then((available) => {
-      if (!disposed) editingAccess = available;
+      if (disposed) return;
+      editingAccess = available;
+      checkingAccess = false;
+      if (!available) return;
+      void fetchSamples();
+      void fetchSidebarAnnotationSummary();
+      void loadTrainingProjectionPoints()
+        .then((points) => {
+          if (!disposed) projectionPoints = points;
+        })
+        .catch((error) => {
+          if (!disposed) projectionReviewError = error?.message ?? 'Failed to load projection data';
+        });
     });
-    void loadTrainingProjectionPoints()
-      .then((points) => {
-        if (!disposed) projectionPoints = points;
-      })
-      .catch((error) => {
-        if (!disposed) projectionReviewError = error?.message ?? 'Failed to load projection data';
-      });
     return () => {
       disposed = true;
     };
   });
-
-  fetchSamples();
-  fetchSidebarAnnotationSummary();
 
   function handleHashChange() {
     const id = window.location.hash.slice(1);
@@ -1680,6 +1682,7 @@
 
 <svelte:window onmousemove={onWindowMouseMove} onmouseup={onWindowMouseUp} onkeydown={handleKeydown} onkeyup={handleKeyup} onhashchange={handleHashChange} />
 
+{#if editingAccess}
 <div class="app" class:embedded>
   {#if !embedded}<header class="site-header">
     <a class="brand" href="/"><img class="brand-logo" src="/logo.png" alt="" width="144" height="144" /> Barktown</a>
@@ -2356,6 +2359,17 @@
     {/if}
   </div>
 </div>
+{:else}
+  <main class="access-notice">
+    <a href="/">Barktown</a>
+    {#if checkingAccess}
+      <p role="status">Checking access…</p>
+    {:else}
+      <h1>Training is available on the Tailnet</h1>
+      <p>Connect to Tailscale and reload this page.</p>
+    {/if}
+  </main>
+{/if}
 
 <style>
   :global(*, *::before, *::after) { box-sizing: border-box; }
@@ -2367,6 +2381,7 @@
   }
 
   .app { min-height: 100dvh; }
+  .access-notice { max-width: 42rem; margin: 5rem auto; padding: 1.5rem; }
 
   /* ── Header ── */
   .site-header {
