@@ -7,7 +7,7 @@ diary, hit, sample, and annotation metadata comes from SQLite through the API.
 Runtime requests deliberately cross two trust boundaries:
 
 - `https://barktown-api.enchart.me` provides anonymous read-only metadata.
-- `https://masmopi.tail523149.ts.net` provides Tailnet-only mutations and
+- `https://barktown-private.tail523149.ts.net` provides Tailnet-only mutations and
   operator features such as reanalysis and monitor parameters.
 
 Public reads must never depend on Tailnet reachability. For now the UI still
@@ -309,7 +309,7 @@ index.json
 | Static adapter | `@sveltejs/adapter-cloudflare` |
 | Asset hosting | MinIO S3 (`s3.angiehjort.com/barktown`) |
 | Public metadata | `barktown-api.enchart.me` read-only API |
-| Private operations | `masmopi.tail523149.ts.net` over Tailscale |
+| Private operations | `barktown-private.tail523149.ts.net` over Tailscale |
 | Preprocessing | Node.js ES modules (no npm deps) |
 | Audio analysis | ffprobe (duration), audiowaveform (peaks) |
 | Styling | Scoped `<style>` per component, no CSS framework |
