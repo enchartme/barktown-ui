@@ -274,6 +274,13 @@
   const hitMetadata = $derived($hitMetadataById.get(entry.id) ?? null);
   const visibleHitMetadata = $derived(trimHitMetadata(hitMetadata, entry));
   const waveformHitMetadata = $derived(editingAccess ? hitMetadata : visibleHitMetadata);
+  const idleHitOpacity = $derived(
+    waveformDuration < 4 * 60 ? 0.8
+      : waveformDuration < 6 * 60 ? 0.6
+      : waveformDuration < 8 * 60 ? 0.4
+      : waveformDuration < 10 * 60 ? 0.2
+      : 0.1,
+  );
   const approverRanges = $derived(hitMetadataFragmentRanges(hitMetadata, {
     startSec: trimBounds.startSec,
     endSec: trimBounds.stopSec,
@@ -1247,6 +1254,7 @@
             {@const loud = waveformHitMetadata.loudnesses[i]}
             {@const tickAlpha = 0.45 + conf * 0.45}
             <g
+              opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
               pointer-events="all"
               role="presentation"
               onmouseenter={() => (hoveredHitIndex = i)}
@@ -1266,7 +1274,7 @@
               <line
                 x1={hx} y1="0"
                 x2={hx} y2={VH}
-                stroke="rgba(230, 120, 0, {tickAlpha})"
+                stroke="rgba(230, 120, 0, {hoveredHitIndex === i ? 1 : tickAlpha})"
                 stroke-width="1.5"
               />
               <!-- Diamond at bottom -->
