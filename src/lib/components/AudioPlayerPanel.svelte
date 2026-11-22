@@ -1242,49 +1242,60 @@
              ensures every pixel inside the SVG fires the seek handler. -->
         <rect x="0" y="0" width={VW} height={VH} fill="transparent" />
 
-        <!-- Hit markers: each confirmed bark hit from goblin inference.
-             hx = end of the detection window (block_end_ts - clip_start_ts).
-             A faint band extends back by window_s to show the uncertainty range
-             — the bark happened somewhere inside the band, not necessarily at hx. -->
+        <!-- Hit markers: center each visual window on its timestamp line,
+             clipping the band to the waveform edges. -->
         {#if waveformHitMetadata && waveformDuration > 0}
           {@const winPx = (waveformHitMetadata.windowS / waveformDuration) * VW}
           {#each waveformHitMetadata.timestamps as ts, i}
             {@const hx = (ts / waveformDuration) * VW}
+            {@const bandStart = Math.max(0, hx - winPx / 2)}
+            {@const bandWidth = Math.max(0, Math.min(VW, hx + winPx / 2) - bandStart)}
             {@const conf = waveformHitMetadata.confidences[i]}
-            {@const loud = waveformHitMetadata.loudnesses[i]}
             {@const tickAlpha = 0.45 + conf * 0.45}
             <g
-              opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
               pointer-events="all"
               role="presentation"
               onmouseenter={() => (hoveredHitIndex = i)}
               onmouseleave={() => (hoveredHitIndex = null)}
             >
-              <!-- Detection-window band: bark is somewhere inside here —
-                   more opaque while hovered, same as fragment highlighting
-                   on focus in /training. -->
+              <!-- Centered window band, more opaque while hovered. -->
               <rect
-                x={Math.max(0, hx - winPx)}
+                x={bandStart}
                 y="0"
-                width={Math.min(hx, winPx)}
+                width={bandWidth}
                 height={VH}
+                opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
                 fill="rgba(230, 120, 0, {hoveredHitIndex === i ? 0.5 : 0.1})"
               />
-              <!-- Tick at end of window -->
+              <!-- Tick at the window timestamp -->
               <line
                 x1={hx} y1="0"
                 x2={hx} y2={VH}
                 stroke="rgba(230, 120, 0, {hoveredHitIndex === i ? 1 : tickAlpha})"
                 stroke-width="1.5"
+                opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
               />
-              <!-- Diamond at bottom -->
-              <polygon
-                points="{hx},{VH - 10} {hx - 4},{VH - 5} {hx},{VH} {hx + 4},{VH - 5}"
-                fill="rgb(230, 120, 0)"
-                opacity={tickAlpha}
-              >
-                <title>Hit {i + 1}/{waveformHitMetadata.timestamps.length} · confidence {Math.round(conf * 100)}% · loudness {loud.toFixed(1)}× · bark is within the shaded band</title>
-              </polygon>
+              {#if editingAccess}
+                <!-- Align labels on the timestamp line; only confidence
+                     changes their height. Inset to keep diamonds whole. -->
+                {#each SAMPLE_LABELS as label}
+                  {@const score = waveformHitMetadata.multilabelScores?.[i]?.[label]}
+                  {#if Number.isFinite(score) && score > 0.1}
+                    {@const dy = 5 + (1 - Math.min(1, score)) * (VH - 10)}
+                    <polygon
+                      points="{hx},{dy - 5} {hx - 4},{dy} {hx},{dy + 5} {hx + 4},{dy}"
+                      fill={sampleLabelColor(label)}
+                      opacity={hoveredHitIndex === i ? 1 : 0.8}
+                      stroke="white"
+                      stroke-width="1"
+                      vector-effect="non-scaling-stroke"
+                      paint-order="stroke fill"
+                    >
+                      <title>Hit {i + 1}/{waveformHitMetadata.timestamps.length} · {label}: {score.toFixed(2)}</title>
+                    </polygon>
+                  {/if}
+                {/each}
+              {/if}
             </g>
           {/each}
         {/if}
@@ -1365,7 +1376,7 @@
         {#if hoveredHit && waveformDuration > 0}
           <div
             class="hit-diagnostics"
-            style:left="clamp(0px, calc({(hoveredHit.timestamp / waveformDuration) * 100}% - 9rem), calc(100% - 9rem))"
+            style:left="clamp(0px, calc({(hoveredHit.timestamp / waveformDuration) * 100}% - 4.5rem), calc(100% - 9rem))"
           >
             <div class="hit-score-row">
               <span>C{hoveredHit.confidence.toFixed(2)}</span>
