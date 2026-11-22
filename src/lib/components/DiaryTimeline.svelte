@@ -7,12 +7,13 @@
    *   days: { date: string, entries: import('$lib/types').Entry[] }[];
    *   startHour: number;
    *   endHour: number;
+   *   operatorAccess?: boolean;
    *   selectedId: string | null;
    *   onselect: (entry: import('$lib/types').Entry) => void;
    *   sunByDate: Record<string, { date: string, sunrise: string|null, sunset: string|null }>;
    * }}
    */
-  let { days, startHour, endHour, selectedId, onselect, sunByDate = {} } = $props();
+  let { days, startHour, endHour, selectedId, onselect, sunByDate = {}, operatorAccess = false } = $props();
 
   const DESKTOP_DATE_WIDTH = 108;
   const MOBILE_DATE_WIDTH = 56;
@@ -63,6 +64,7 @@
         entries={day.entries}
         {selectedId}
         {onselect}
+        {operatorAccess}
         sunEntry={sunByDate[day.date] ?? null}
       />
     {/each}

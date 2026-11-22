@@ -8,6 +8,7 @@ import { PUBLIC_API_BASE } from './utils.js';
  *   timestamps: number[],
  *   confidences: number[],
  *   loudnesses: number[],
+ *   multilabelScores?: Record<string, number>[] | null,
  *   paddingS: number,
  *   windowS: number,
  *   modelTrainedAt: string | null,

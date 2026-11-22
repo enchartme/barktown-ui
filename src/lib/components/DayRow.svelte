@@ -1,4 +1,5 @@
 <script>
+  import ReanalyzeDayButton from './ReanalyzeDayButton.svelte';
   import { assignLanes, parseTimeToMinutes, formatDate } from '$lib/utils.js';
   import { DIARY_DAY_COLOR, DIARY_NIGHT_COLOR, sunTimeToLocalMinutes } from '$lib/sun-time.js';
   import { diaryTrimBounds } from '$lib/diary-trim.js';
@@ -8,11 +9,12 @@
    * @type {{
    *   date: string;
    *   entries: import('$lib/types').Entry[];
+   *   operatorAccess?: boolean;
    *   selectedId: string | null;
    *   onselect: (entry: import('$lib/types').Entry) => void;
    * }}
    */
-  let { date, entries, selectedId, onselect, sunEntry = null } = $props();
+  let { date, entries, selectedId, onselect, sunEntry = null, operatorAccess = false } = $props();
 
   // ── Layout constants ───────────────────────────────────────────────────────
   const RULER_HEIGHT     = 22;  // px – the hour-tick ruler row
@@ -156,6 +158,7 @@
     <span class="date-rest">{dateLabel.split(',').slice(1).join(',').trim()}</span>
     <span class="date-daym">{dateDayM}</span>
     <span class="date-year-mobile">{dateYear}</span>
+    {#if operatorAccess}<ReanalyzeDayButton {date} disabled={!entries.some(e => e.reanalyzable)} />{/if}
   </div>
 
   <!-- Track: fills remaining row width, no horizontal scroll -->

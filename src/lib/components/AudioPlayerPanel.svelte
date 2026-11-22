@@ -1,4 +1,5 @@
 <script>
+  import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { onMount, tick } from 'svelte';
   import { formatDuration, formatDate, downsampleWaveform, waveformNorm, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
   import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, hitMetadataById, setHitMetadata } from '$lib/hit-metadata.js';
@@ -277,9 +278,21 @@
     startSec: trimBounds.startSec,
     endSec: trimBounds.stopSec,
   }));
-  // Hit whose confidence/loudness labels are shown — only on hover, since
+  // Hit whose diagnostics are shown — only on hover, since
   // they'd otherwise overlap when hits are close together.
   let hoveredHitIndex = $state(/** @type {number|null} */ (null));
+  const hoveredHit = $derived(
+    hoveredHitIndex !== null && waveformHitMetadata?.timestamps[hoveredHitIndex] !== undefined
+      ? {
+          timestamp: waveformHitMetadata.timestamps[hoveredHitIndex],
+          confidence: waveformHitMetadata.confidences[hoveredHitIndex],
+          loudness: waveformHitMetadata.loudnesses[hoveredHitIndex],
+          scores: Object.entries(waveformHitMetadata.multilabelScores?.[hoveredHitIndex] ?? {})
+            .filter(([, score]) => Number.isFinite(score))
+            .sort((a, b) => b[1] - a[1]),
+        }
+      : null,
+  );
 
   $effect(() => {
     void entry.id;
@@ -758,7 +771,7 @@
   }
 
   function handleReanalyzeClick() {
-    if (!editingAccess || reanalyzeLoading || !entry.reanalyzable) return;
+    if (!editingAccess || !$reanalysis.available || $reanalysis.active || reanalyzeLoading || !entry.reanalyzable) return;
     if (reportShortcutsEnabled) {
       deleteConfirm = false;
       reanalyzeConfirm = true;
@@ -779,7 +792,7 @@
   }
 
   async function runReanalysis() {
-    if (!editingAccess || reanalyzeLoading || !entry.reanalyzable) return;
+    if (!editingAccess || !$reanalysis.available || $reanalysis.active || reanalyzeLoading || !entry.reanalyzable) return;
     reanalyzeLoading = true;
     reanalyzeError = '';
     try {
@@ -790,7 +803,7 @@
             body: JSON.stringify({ candidateThreshold: reanalyzeThreshold }),
           }
         : { method: 'POST' };
-      const res = await fetch(
+      const res = await reanalysisFetch(
         `${PRIVATE_API_BASE}/api/diary/${encodeURIComponent(entry.id)}/reanalyze`,
         request,
       );
@@ -1059,7 +1072,7 @@
             aria-label="Re-analysis classifier threshold"
           />
         </label>
-        <button class="reanalyze-confirm-run" onclick={handleReanalyzeConfirm} aria-label="Start re-analysis">Run</button>
+        <button class="reanalyze-confirm-run" disabled={!$reanalysis.available || $reanalysis.active} onclick={handleReanalyzeConfirm} aria-label="Start re-analysis">Run</button>
         <button class="delete-confirm-no" onclick={handleReanalyzeCancel} aria-label="Cancel re-analysis">Cancel</button>
       </span>
     {:else}
@@ -1081,7 +1094,7 @@
         <button
           class="reanalyze-btn"
           onclick={handleReanalyzeClick}
-          disabled={reanalyzeLoading || !entry.reanalyzable}
+          disabled={!$reanalysis.available || $reanalysis.active || reanalyzeLoading || !entry.reanalyzable}
           aria-label="Re-analyze recording"
           title={entry.reanalyzable
             ? 'Re-run deterministic bark-window classification against the source WAV'
@@ -1248,28 +1261,6 @@
                 stroke="rgba(230, 120, 0, {tickAlpha})"
                 stroke-width="1.5"
               />
-              <!-- Labels: right-aligned to the tick, two lines at top — only
-                   while hovered, otherwise they clutter/overlap. -->
-              {#if hoveredHitIndex === i}
-                <text
-                  x={hx - 3}
-                  y="14"
-                  font-size="var(--font-size-small)"
-                  font-family="monospace"
-                  text-anchor="end"
-                  fill="rgba(200, 90, 0, {tickAlpha})"
-                  pointer-events="none"
-                >C{conf.toFixed(2)}</text>
-                <text
-                  x={hx - 3}
-                  y="28"
-                  font-size="var(--font-size-small)"
-                  font-family="monospace"
-                  text-anchor="end"
-                  fill="rgba(200, 90, 0, {tickAlpha})"
-                  pointer-events="none"
-                >L{loud.toFixed(1)}x</text>
-              {/if}
               <!-- Diamond at bottom -->
               <polygon
                 points="{hx},{VH - 10} {hx - 4},{VH - 5} {hx},{VH} {hx + 4},{VH - 5}"
@@ -1355,6 +1346,28 @@
           />
         {/if}
         </svg>
+        {#if hoveredHit && waveformDuration > 0}
+          <div
+            class="hit-diagnostics"
+            style:left="clamp(0px, calc({(hoveredHit.timestamp / waveformDuration) * 100}% - 9rem), calc(100% - 9rem))"
+          >
+            <div class="hit-score-row">
+              <span>C{hoveredHit.confidence.toFixed(2)}</span>
+              <span class="hit-score-track" aria-hidden="true">
+                <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, hoveredHit.confidence)) * 100}%"></span>
+              </span>
+            </div>
+            <div>L{hoveredHit.loudness.toFixed(1)}x</div>
+            {#each hoveredHit.scores as [label, score] (label)}
+              <div class="hit-score-row" style:color={sampleLabelColor(label)} aria-label="{label}: {score.toFixed(2)}">
+                <span>{sampleLabelShortcut(label) || label} {score.toFixed(2)}</span>
+                <span class="hit-score-track" aria-hidden="true">
+                  <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, score)) * 100}%"></span>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     {:else if entry.waveformPath && wfLoading}
       <div class="waveform-loading">Loading waveform…</div>
@@ -2050,8 +2063,40 @@
     width: 100%;
     height: 80px;
     border-radius: 4px;
-    overflow: hidden;
+    overflow: visible;
     background: #f4f6fb;
+  }
+  .hit-diagnostics {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    z-index: 2;
+    box-sizing: border-box;
+    width: 9rem;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: 0 1px 6px #0003;
+    color: #c85a00;
+    font: 0.75rem/1.2 monospace;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .hit-score-row {
+    display: grid;
+    grid-template-columns: 6ch minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+  }
+  .hit-score-track {
+    height: 5px;
+    border-radius: 2px;
+    background: #edf0f4;
+    overflow: hidden;
+  }
+  .hit-score-bar {
+    display: block;
+    height: 100%;
+    background: currentColor;
   }
   .wave-canvas {
     position: absolute;
@@ -2059,6 +2104,7 @@
     width: 100%;
     height: 100%;
     display: block;
+    border-radius: inherit;
   }
   .player-waveform {
     position: absolute;

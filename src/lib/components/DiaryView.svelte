@@ -274,6 +274,26 @@
     });
     return () => { disposed = true; };
   });
+  onMount(() => {
+    let disposed = false;
+    let sequence = 0;
+    async function update() {
+      const request = ++sequence;
+      const viewMode = showAllDays;
+      const dates = entries.map(e => e.date).sort();
+      if (!dates.length) return;
+      const bounds = { startDate: dates[0], endDate: dates.at(-1) };
+      try {
+        const [nextEntries] = await Promise.all([fetchDiary(bounds), loadHitMetadata(bounds)]);
+        if (!disposed && request === sequence && viewMode === showAllDays) {
+          entries = nextEntries;
+          if (panelEntry) panelEntry = entries.find(e => e.id === panelEntry.id) ?? panelEntry;
+        }
+      } catch (error) { console.error('Could not refresh re-analysis results:', error); }
+    }
+    window.addEventListener('reanalysis-update', update);
+    return () => { disposed = true; window.removeEventListener('reanalysis-update', update); };
+  });
 </script>
 
 <svelte:head>
@@ -347,7 +367,7 @@
     {:else if loadError}
       <p class="status-msg error">Could not load diary data: {loadError}</p>
     {:else}
-    <DiaryTimeline
+    <DiaryTimeline {operatorAccess}
       {days}
       startHour={domain.startHour}
       endHour={domain.endHour}

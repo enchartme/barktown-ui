@@ -1,4 +1,6 @@
 <script>
+  import { reanalysis } from '$lib/reanalysis.js';
+  import ReanalyzeDayButton from '$lib/components/ReanalyzeDayButton.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import AudioPlayerPanel from '$lib/components/AudioPlayerPanel.svelte';
@@ -396,6 +398,34 @@
     });
     return () => { disposed = true; };
   });
+  onMount(() => {
+    let disposed = false;
+    let refreshing = false;
+    let again = false;
+    async function update() {
+      if (refreshing) { again = true; return; }
+      refreshing = true;
+      try {
+        do {
+          again = false;
+          const bounds = reportDateBounds;
+          if (!bounds) break;
+          const requestId = reportRequestId;
+          const [nextEntries, nextSummary] = await Promise.all([
+            fetchDiary(bounds), fetchDiarySummary(bounds), loadHitMetadata(bounds),
+          ]);
+          if (!disposed && requestId === reportRequestId) {
+            entries = nextEntries;
+            periodSummary = nextSummary;
+            if (panelEntry) panelEntry = entries.find(e => e.id === panelEntry.id) ?? panelEntry;
+          }
+        } while (again && !disposed);
+      } catch (error) { console.error('Could not refresh re-analysis results:', error); }
+      finally { refreshing = false; }
+    }
+    window.addEventListener('reanalysis-update', update);
+    return () => { disposed = true; window.removeEventListener('reanalysis-update', update); };
+  });
 </script>
 
 <svelte:head>
@@ -509,6 +539,7 @@
           <section class="day-section">
             <h2>
               <span>{formatDate(day.date)}</span>
+              {#if operatorAccess}<span class="screen-only"><ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} /></span>{/if}
               <small>
                 {countLabel(day.summary.disturbances, 'disturbance')}
                 <span aria-hidden="true">·</span>
@@ -541,12 +572,16 @@
                         </svg>
                       </button>
                       <time datetime={entry.datetimeLocal}>{entry.time}</time>
+                      {#if $reanalysis.currentIds.includes(entry.id)}
+                        <span role="status">Processing…</span>
+                      {:else}
                       <ReportBarcode
                         durationSec={entry.durationSec}
                         trimStartMs={entry.trimStartMs}
                         trimStopMs={entry.trimStopMs}
                         metadata={$hitMetadataById.get(entry.id) ?? null}
                       />
+                      {/if}
                       {#if noteLabels.length === 0 && needsPeriod}
                         <span class="period" aria-hidden="true">.</span>
                       {/if}
@@ -860,6 +895,7 @@
   }
 
   h2 {
+    flex-wrap: wrap;
     margin: 0 0 0.75rem;
     display: flex;
     align-items: baseline;

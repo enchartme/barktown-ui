@@ -1,4 +1,5 @@
 <script>
+  import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { page } from '$app/state';
   import { onMount, tick } from 'svelte';
   import {
@@ -1378,7 +1379,7 @@
   // ── Sample-level mutations ─────────────────────────────────────────────────
 
   function openReanalyzeConfirm() {
-    if (!editingAccess || !selected || reanalyzeBusy || waveformRepairBusy) return;
+    if (!editingAccess || !$reanalysis.available || $reanalysis.active || !selected || reanalyzeBusy || waveformRepairBusy) return;
     deleteConfirm = false;
     reanalyzeError = '';
     reanalyzeConfirm = true;
@@ -1390,7 +1391,7 @@
   }
 
   async function confirmReanalyzeSample() {
-    if (!editingAccess || !selected || !reanalyzeConfirm || reanalyzeBusy || waveformRepairBusy) return;
+    if (!editingAccess || !$reanalysis.available || $reanalysis.active || !selected || !reanalyzeConfirm || reanalyzeBusy || waveformRepairBusy) return;
     const sample = selected;
     reanalyzeConfirm = false;
     reanalyzeBusy = true;
@@ -1402,7 +1403,7 @@
     addingSampleNote = false;
     dragMode = null;
     try {
-      const res = await fetch(
+      const res = await reanalysisFetch(
         `${PRIVATE_API_BASE}/api/samples/${encodeURIComponent(sample.id)}/reanalyze`,
         {
           method: 'POST',
@@ -1672,6 +1673,26 @@
     const target = samples.find(s => s.id === id);
     if (target) selectSample(target);
   }
+  onMount(() => {
+    const update = async (event) => {
+      if (!selected || reanalyzeBusy || event.detail.active
+        || event.detail.recordId !== `sample:${selected.id}`) return;
+      const sampleId = selected.id;
+      try {
+        const response = await fetch(`${PUBLIC_API_BASE}/api/samples/${encodeURIComponent(sampleId)}/annotations`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const nextAnnotations = await response.json();
+        if (selected?.id === sampleId && !reanalyzeBusy) {
+          annotations = nextAnnotations;
+          syncSampleFragmentsFromAnnotations();
+        }
+      } catch (error) { console.error('Could not refresh re-analysis results:', error); }
+    };
+    window.addEventListener('reanalysis-update', update);
+    return () => window.removeEventListener('reanalysis-update', update);
+  });
 </script>
 
 <svelte:head>
@@ -1898,7 +1919,7 @@
 
             <button
               class="reanalyze-btn"
-              disabled={reanalyzeBusy || waveformRepairBusy || renameBusy || deleteBusy || bulkRelabelBusy}
+              disabled={!$reanalysis.available || $reanalysis.active || reanalyzeBusy || waveformRepairBusy || renameBusy || deleteBusy || bulkRelabelBusy}
               onclick={openReanalyzeConfirm}
               title="Replace bark, review, and yap fragments using the current classifier"
             >{reanalyzeBusy ? 'Analyzing…' : 'Re-analyze'}</button>
@@ -1940,7 +1961,7 @@
                 aria-label="Re-analysis confidence threshold override"
               />
             </label>
-            <button class="action-btn" disabled={reanalyzeBusy} onclick={confirmReanalyzeSample}>Run</button>
+            <button class="action-btn" disabled={!$reanalysis.available || $reanalysis.active || reanalyzeBusy} onclick={confirmReanalyzeSample}>Run</button>
             <button class="action-btn" disabled={reanalyzeBusy} onclick={cancelReanalyze}>Cancel</button>
           </div>
         {/if}
