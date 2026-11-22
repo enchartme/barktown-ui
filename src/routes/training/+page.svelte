@@ -1693,6 +1693,15 @@
     window.addEventListener('reanalysis-update', update);
     return () => window.removeEventListener('reanalysis-update', update);
   });
+  const reanalyzeBlockedReason = $derived(
+    $reanalysis.active || reanalyzeBusy ? 'Re-analysis is already in progress. Wait for it to finish.'
+    : !$reanalysis.available ? 'The private re-analysis API is unavailable. Check your Tailnet connection.'
+    : waveformRepairBusy ? 'The waveform is being repaired. Wait for it to finish.'
+    : renameBusy ? 'The sample is being renamed. Wait for it to finish.'
+    : deleteBusy ? 'The sample is being deleted. Wait for it to finish.'
+    : bulkRelabelBusy ? 'Sample labels are being updated. Wait for it to finish.'
+    : '',
+  );
 </script>
 
 <svelte:head>
@@ -1917,12 +1926,14 @@
               </select>
             </label>
 
+            <span class="reanalyze-control" class:blocked={Boolean(reanalyzeBlockedReason)} title={reanalyzeBlockedReason || undefined}>
             <button
               class="reanalyze-btn"
               disabled={!$reanalysis.available || $reanalysis.active || reanalyzeBusy || waveformRepairBusy || renameBusy || deleteBusy || bulkRelabelBusy}
               onclick={openReanalyzeConfirm}
-              title="Replace bark, review, and yap fragments using the current classifier"
+              title={reanalyzeBlockedReason || "Replace bark, review, and yap fragments using the current classifier"}
             >{reanalyzeBusy ? 'Analyzing…' : 'Re-analyze'}</button>
+            </span>
 
             <button
               class="danger-btn"
@@ -1961,7 +1972,9 @@
                 aria-label="Re-analysis confidence threshold override"
               />
             </label>
-            <button class="action-btn" disabled={!$reanalysis.available || $reanalysis.active || reanalyzeBusy} onclick={confirmReanalyzeSample}>Run</button>
+            <span class="reanalyze-control" class:blocked={Boolean(reanalyzeBlockedReason)} title={reanalyzeBlockedReason || undefined}>
+              <button class="action-btn" disabled={Boolean(reanalyzeBlockedReason)} title={reanalyzeBlockedReason || 'Start re-analysis'} onclick={confirmReanalyzeSample}>Run</button>
+            </span>
             <button class="action-btn" disabled={reanalyzeBusy} onclick={cancelReanalyze}>Cancel</button>
           </div>
         {/if}
@@ -2379,6 +2392,9 @@
 </div>
 
 <style>
+  .reanalyze-control { display: inline-flex; }
+  .reanalyze-control.blocked { cursor: not-allowed; }
+  .reanalyze-control button:disabled { pointer-events: none; }
   :global(*, *::before, *::after) { box-sizing: border-box; }
   :global(body) {
     margin: 0;

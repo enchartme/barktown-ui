@@ -529,6 +529,12 @@
   let reanalyzeError   = $state('');
   let reanalyzeThreshold = $state(0.9);
   let reanalyzeConfirm = $state(false);
+  const reanalyzeBlockedReason = $derived(
+    $reanalysis.active || reanalyzeLoading ? 'Re-analysis is already in progress. Wait for it to finish.'
+    : !$reanalysis.available ? 'The private re-analysis API is unavailable. Check your Tailnet connection.'
+    : !entry.reanalyzable ? 'Source WAV is not available for re-analysis.'
+    : '',
+  );
 
   $effect(() => {
     void entry.id;
@@ -1072,7 +1078,9 @@
             aria-label="Re-analysis classifier threshold"
           />
         </label>
-        <button class="reanalyze-confirm-run" disabled={!$reanalysis.available || $reanalysis.active} onclick={handleReanalyzeConfirm} aria-label="Start re-analysis">Run</button>
+        <span class="reanalyze-control" class:blocked={Boolean(reanalyzeBlockedReason)} title={reanalyzeBlockedReason || undefined}>
+        <button class="reanalyze-confirm-run" disabled={!$reanalysis.available || $reanalysis.active} onclick={handleReanalyzeConfirm} title={reanalyzeBlockedReason || 'Start re-analysis'} aria-label="Start re-analysis">Run</button>
+        </span>
         <button class="delete-confirm-no" onclick={handleReanalyzeCancel} aria-label="Cancel re-analysis">Cancel</button>
       </span>
     {:else}
@@ -1091,15 +1099,15 @@
         <button class="false-positive-btn" onclick={handleFalsePositiveClick} aria-label="Mark as false positive" title="Move this false positive to training samples">👎</button>
       {/if}
       {#if editingAccess}
+        <span class="reanalyze-control" class:blocked={Boolean(reanalyzeBlockedReason)} title={reanalyzeBlockedReason || undefined}>
         <button
           class="reanalyze-btn"
           onclick={handleReanalyzeClick}
           disabled={!$reanalysis.available || $reanalysis.active || reanalyzeLoading || !entry.reanalyzable}
           aria-label="Re-analyze recording"
-          title={entry.reanalyzable
-            ? 'Re-run deterministic bark-window classification against the source WAV'
-            : 'Source WAV is not available for re-analysis'}
+          title={reanalyzeBlockedReason || 'Re-run deterministic bark-window classification against the source WAV'}
         >{reanalyzeLoading ? '⏳' : '🔁'}</button>
+        </span>
       {/if}
       {#if entry.sampleId}
         <a class="cross-link-btn" href="/training#{entry.sampleId}" title="View linked training sample">🔬</a>
@@ -1579,6 +1587,9 @@
 {/if}
 
 <style>
+  .reanalyze-control { display: inline-flex; }
+  .reanalyze-control.blocked { cursor: not-allowed; }
+  .reanalyze-control button:disabled { pointer-events: none; }
   /* ── Backdrop ── */
   .panel-backdrop {
     position: fixed;

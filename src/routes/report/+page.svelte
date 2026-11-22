@@ -539,13 +539,13 @@
           <section class="day-section">
             <h2>
               <span>{formatDate(day.date)}</span>
-              {#if operatorAccess}<span class="screen-only"><ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} /></span>{/if}
               <small>
                 {countLabel(day.summary.disturbances, 'disturbance')}
                 <span aria-hidden="true">·</span>
                 {formatDisturbedTime(day.summary.totalDurationSec)} disturbed
                 <span aria-hidden="true">·</span>
                 {countLabel(day.summary.barks, 'bark')}
+                {#if operatorAccess}<span class="day-action screen-only"><ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} /></span>{/if}
               </small>
             </h2>
 
@@ -909,6 +909,8 @@
   }
 
   h2 small {
+    flex: 1;
+    align-items: center;
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -918,6 +920,8 @@
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
     font-weight: 500;
   }
+
+  .day-action { margin-left: 0.3rem; }
 
   .recordings,
   .no-recordings {
@@ -994,7 +998,8 @@
     .range-controls { width: 100%; justify-content: space-between; }
     .ordering-controls { justify-content: flex-start; flex-wrap: wrap; }
     h2 { align-items: flex-start; flex-direction: column; }
-    h2 small { justify-content: flex-start; }
+    h2 small { justify-content: flex-start; width: 100%; }
+    .day-action { margin-left: auto; }
   }
 
   @media (max-width: 440px) {
