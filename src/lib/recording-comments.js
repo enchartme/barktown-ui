@@ -90,8 +90,7 @@ export function inheritSampleWideAnnotations(entries, annotations) {
 
 /**
  * Older public APIs expose sample links but not an annotations array on diary
- * entries. Refresh individual diary entries for that compatibility case;
- * the bulk training annotation feed is private.
+ * entries. Fetch the bulk annotation feed only for that compatibility case.
  */
 export async function hydrateRecordingCommentAnnotations(entries, publicApiBase, fetchImpl = fetch) {
   const needsFallback = Array.isArray(entries) && entries.some((entry) => (
@@ -99,13 +98,11 @@ export async function hydrateRecordingCommentAnnotations(entries, publicApiBase,
   ));
   if (!needsFallback) return entries;
 
-  return Promise.all(entries.map(async (entry) => {
-    if (!entry?.sampleId || Array.isArray(entry.annotations)) return entry;
-    const response = await fetchImpl(`${publicApiBase}/api/diary/${encodeURIComponent(entry.id)}`);
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const current = await response.json();
-    return { ...entry, annotations: Array.isArray(current.annotations) ? current.annotations : [] };
-  }));
+  const response = await fetchImpl(`${publicApiBase}/api/annotations`);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const annotations = await response.json();
+  if (!Array.isArray(annotations)) throw new Error('Annotations response has an invalid shape');
+  return inheritSampleWideAnnotations(entries, annotations);
 }
 
 /** Replace an entry's normalized whole-recording annotation snapshot. */

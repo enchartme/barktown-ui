@@ -317,7 +317,7 @@
 
     <a class="nav-link current" aria-current="page" href="/diary">Diary</a>
     <a class="nav-link" href="/report">Report</a>
-    {#if operatorAccess}<a class="nav-link" href="/training">Training</a>{/if}
+    <a class="nav-link" href="/training">Training</a>
     {#if operatorAccess}<a class="nav-link" href="/quality">Quality</a>{/if}
     <a class="nav-link" href="/method">Method</a>
 

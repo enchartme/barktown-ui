@@ -1,17 +1,3 @@
-<script>
-  import { onMount } from 'svelte';
-  import { probeEditingAccess } from '$lib/editing-access.js';
-
-  let operatorAccess = $state(false);
-  onMount(() => {
-    let disposed = false;
-    void probeEditingAccess().then((available) => {
-      if (!disposed) operatorAccess = available;
-    });
-    return () => { disposed = true; };
-  });
-</script>
-
 <svelte:head>
   <title>Barktown</title>
   <meta name="description" content="Explore Barktown's diary, report, training data and research method." />
@@ -32,10 +18,10 @@
         <strong>Explore the full diary</strong>
         <span>The complete bark disturbance timeline starting from 2021</span>
       </a>
-      {#if operatorAccess}<a href="/training">
+      <a href="/training">
         <strong>See training data</strong>
         <span>Audit how the model was trained to detect barks</span>
-      </a>{/if}
+      </a>
       <a href="/method">
         <strong>About the project</strong>
         <span>Technology and science of bark detection</span>
