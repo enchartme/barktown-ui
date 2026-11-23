@@ -46,8 +46,8 @@
   <button class="settings-toggle" onclick={show} aria-label="Window filter settings" aria-expanded={open}>⚙️</button>
   {#if open}
     <section class="settings-card" aria-label="Window filter settings">
-      <div class="card-heading"><strong>Window filters</strong><button onclick={() => open = false} aria-label="Close window filters">✕</button></div>
-      <p>Show windows whose available label and aggregate scores fall within every range. Applies to everyone’s diary/report windows and bark counts. Missing scores stay visible.</p>
+      <div class="card-heading"><strong>Hide barks here</strong><button onclick={() => open = false} aria-label="Close window filters">✕</button></div>
+      <p>Filter bark hits and bark counts visible in the Diary and Report views. Hits that don't pass the filter stay a little bit visible for admins (on Tailnet)</p>
         <div class="filter-grid">
           <span>Filter</span><span>Min</span><span>Max</span>
           {#each FILTER_DEFINITIONS as filter}
@@ -56,13 +56,15 @@
               <hr class="filter-divider" />
             {/if}
             {#if label === 'positive' || label === 'negative' || label === 'delta'}
-              <span class="aggregate-filter" title={filter.description}>{label}</span>
+              <span class="aggregate-filter" title={filter.description}>
+                {#if label === 'delta'}Delta:<br />top positive<br />– top negative{:else}{filter.displayName}{/if}
+              </span>
             {:else}
               <span class="sample-label-pill" style:background={sampleLabelColor(label)} title={filter.description}>{label}</span>
             {/if}
             {#each ['min', 'max'] as bound}
               <label class="slider-control">
-                <input type="range" min={filter.ranges[bound][0]} max={filter.ranges[bound][1]} step="0.01" aria-label="{label} {bound === 'min' ? 'minimum' : 'maximum'}" bind:value={drafts[`filter_${label}_${bound}`]} oninput={() => saved = false} onchange={() => save()} disabled={busy} />
+                <input type="range" min={filter.ranges[bound][0]} max={filter.ranges[bound][1]} step="0.01" aria-label="{filter.displayName ?? label} {bound === 'min' ? 'minimum' : 'maximum'}" bind:value={drafts[`filter_${label}_${bound}`]} oninput={() => saved = false} onchange={() => save()} disabled={busy} />
                 <output>{drafts[`filter_${label}_${bound}`].toFixed(2)}</output>
               </label>
             {/each}
@@ -82,9 +84,10 @@
   .card-heading, .actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .card-heading strong { font-family: var(--font-heading); font-size: var(--font-size-small); font-weight: var(--font-heading-weight); }
   p { line-height: 1.4; margin: 10px 0; }
-  .filter-grid { display: grid; grid-template-columns: max-content repeat(2, minmax(0, 1fr)); gap: 8px; align-items: center; }
+  .filter-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 8px; align-items: center; }
+  .filter-grid > span { align-self: start; }
   .filter-divider { grid-column: 1 / -1; width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #e0e0dc; }
-  .aggregate-filter { font-weight: 700; }
+  .aggregate-filter { font-weight: 700; line-height: 1.4; }
   .sample-label-pill { justify-self: start; font-family: var(--font-monospace); font-size: var(--font-size-tiny); font-weight: 700; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 8px; color: #fff; }
   .slider-control { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
   input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: #1a1a1a; cursor: pointer; }

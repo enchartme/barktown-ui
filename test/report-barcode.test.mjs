@@ -5,6 +5,7 @@ import {
   barcodeLines,
   barcodeWidth,
   hitLoudnessColor,
+  hitLoudnessFraction,
   MAX_BARCODE_WIDTH,
 } from '../src/lib/report-barcode.js';
 
@@ -31,6 +32,16 @@ test('barcode lines use 1.5-second intervals and the loudest hit in a shared int
 
 test('barcode loudness palette runs from orange to dark red', () => {
   assert.equal(hitLoudnessColor(1), 'rgb(255, 165, 0)');
-  assert.equal(hitLoudnessColor(4), 'rgb(139, 0, 0)');
+  assert.equal(hitLoudnessColor(10), 'rgb(139, 0, 0)');
   assert.equal(hitLoudnessColor(100), 'rgb(139, 0, 0)');
+});
+
+test('loudness bar shares the logarithmic 1–10x color domain and clamps its width', () => {
+  assert.equal(hitLoudnessFraction(0), 0);
+  assert.equal(hitLoudnessFraction(1), 0);
+  assert.ok(Math.abs(hitLoudnessFraction(Math.sqrt(10)) - 0.5) < 1e-12);
+  assert.ok(Math.abs(hitLoudnessFraction(2) - Math.log10(2)) < 1e-12);
+  assert.equal(hitLoudnessFraction(10), 1);
+  assert.equal(hitLoudnessFraction(100), 1);
+  assert.equal(hitLoudnessFraction(NaN), 0);
 });

@@ -4,11 +4,11 @@ import { trimHitMetadata } from './diary-trim.js';
 export const POSITIVE_LABELS = Object.freeze(['bark', 'yap']);
 export const NEGATIVE_LABELS = Object.freeze(SAMPLE_LABELS.filter(label => !POSITIVE_LABELS.includes(label)));
 export const FILTER_DEFINITIONS = Object.freeze([
-  { name: 'positive', description: 'Highest confidence among bark and yap' },
+  { name: 'positive', displayName: 'Top positive', description: 'Highest confidence among bark and yap' },
   ...POSITIVE_LABELS.map(name => ({ name, description: `${name} confidence` })),
-  { name: 'negative', description: 'Highest confidence among all labels except bark and yap' },
+  { name: 'negative', displayName: 'Top negative', description: 'Highest confidence among all labels except bark and yap' },
   ...NEGATIVE_LABELS.map(name => ({ name, description: `${name} confidence` })),
-  { name: 'delta', description: 'Highest positive confidence minus highest negative confidence' },
+  { name: 'delta', displayName: 'Delta (top positive – top negative)', description: 'Highest positive confidence minus highest negative confidence' },
 ].map(filter => Object.freeze({
   ...filter,
   ranges: filter.name === 'delta' ? { min: [-1, 1], max: [-1, 1] } : { min: [0, 1], max: [0, 1] },

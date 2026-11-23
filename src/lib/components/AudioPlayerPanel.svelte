@@ -5,6 +5,7 @@
   import { formatDuration, formatDate, downsampleWaveform, waveformNorm, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
   import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata } from '$lib/hit-metadata.js';
   import { recordingComment } from '$lib/recording-comments.js';
+  import { hitLoudnessFraction } from '$lib/report-barcode.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
   import { hitMetadataFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
@@ -1387,22 +1388,33 @@
             class="hit-diagnostics"
             style:left="clamp(0px, calc({(hoveredHit.timestamp / waveformDuration) * 100}% - 4.5rem), calc(100% - 9rem))"
           >
-            {#if hoveredHit.filtered}<div class="filtered-hit-note">Filtered</div>{/if}
-            <div class="hit-score-row">
-              <span>C{hoveredHit.confidence.toFixed(2)}</span>
-              <span class="hit-score-track" aria-hidden="true">
-                <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, hoveredHit.confidence)) * 100}%"></span>
-              </span>
-            </div>
-            <div>L{hoveredHit.loudness.toFixed(1)}x</div>
-            {#each hoveredHit.scores as [label, score] (label)}
-              <div class="hit-score-row" style:color={sampleLabelColor(label)} aria-label="{label}: {score.toFixed(2)}">
-                <span>{sampleLabelShortcut(label) || label} {score.toFixed(2)}</span>
+            <div class="hit-summary">
+              {#if hoveredHit.filtered}<div class="filtered-hit-note">Filtered</div>{/if}
+              <div class="hit-score-row">
+                <span>{hoveredHit.confidence.toFixed(2)} Confidence</span>
                 <span class="hit-score-track" aria-hidden="true">
-                  <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, score)) * 100}%"></span>
+                  <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, hoveredHit.confidence)) * 100}%"></span>
                 </span>
               </div>
-            {/each}
+              <div class="hit-score-row">
+                <span>{hoveredHit.loudness.toFixed(1)}x Loudness</span>
+                <span class="hit-score-track" aria-hidden="true">
+                  <span class="hit-score-bar" style:width="{hitLoudnessFraction(hoveredHit.loudness) * 100}%"></span>
+                </span>
+              </div>
+            </div>
+            {#if hoveredHit.scores.length}
+              <div class="hit-label-scores">
+                {#each hoveredHit.scores as [label, score] (label)}
+                  <div class="hit-score-row" style:color={sampleLabelColor(label)} aria-label="{label}: {score.toFixed(2)}">
+                    <span>{score.toFixed(2)} {label}</span>
+                    <span class="hit-score-track" aria-hidden="true">
+                      <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, score)) * 100}%"></span>
+                    </span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
@@ -2121,17 +2133,35 @@
     white-space: nowrap;
     pointer-events: none;
   }
+  .hit-summary {
+    display: grid;
+    gap: 3px;
+    margin: -4px -6px 0;
+    padding: 4px 6px;
+    border-radius: 4px 4px 0 0;
+    background: #f0f2f6;
+  }
+  .hit-label-scores {
+    display: grid;
+    gap: 3px;
+    margin-top: 8px;
+  }
   .hit-score-row {
     display: grid;
-    grid-template-columns: 6ch minmax(0, 1fr);
-    align-items: center;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
   .hit-score-track {
-    height: 5px;
-    border-radius: 2px;
+    display: block;
+    width: 100%;
+    height: 2px;
+    min-height: 2px;
+    border-radius: 1px;
     background: #edf0f4;
     overflow: hidden;
+  }
+  .hit-summary .hit-score-track {
+    background: #cdd3dd;
   }
   .hit-score-bar {
     display: block;

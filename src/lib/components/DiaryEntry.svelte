@@ -1,7 +1,7 @@
 <script>
   import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { formatDiaryEntryTitle } from '$lib/hit-metadata.js';
-  import { filteredHitColor } from '$lib/report-barcode.js';
+  import { filteredHitColor, hitLoudnessColor } from '$lib/report-barcode.js';
   import { recordingComment } from '$lib/recording-comments.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { durationAreaRadius } from '$lib/diary-entry-visual.js';
@@ -103,20 +103,6 @@
   const displayZIndex = $derived(knobHovered ? MAX_DURATION + 1 : entryZIndex);
 
   /**
-   * Continuous orange → dark-red scale driven by per-hit loudness ratio (La).
-   * @param {number} loudness
-   * @returns {string}
-   */
-  function hitColor(loudness) {
-    const LO = 1, HI = 4; // typical La range seen in auto-detected clips
-    const t = Math.max(0, Math.min(1, (loudness - LO) / (HI - LO)));
-    const from = [255, 165, 0];   // orange
-    const to   = [139, 0, 0];     // dark red
-    const [r, g, b] = from.map((c, i) => Math.round(c + (to[i] - c) * t));
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-
-  /**
    * Confidence-driven line length, anchored at the outer radius: 1.0 spans
    * the full inner–outer distance, 0.9 (or below) collapses to a point.
    * @param {number} confidence
@@ -170,7 +156,7 @@
       const startRadius = radius - hitLengthFraction(drawnHitMetadata.confidences[i]) * (radius - INNER_RADIUS);
       ctx.strokeStyle = drawnHitMetadata.filteredHits?.[i]
         ? filteredHitColor(drawnHitMetadata.loudnesses[i])
-        : hitColor(drawnHitMetadata.loudnesses[i]);
+        : hitLoudnessColor(drawnHitMetadata.loudnesses[i]);
       ctx.beginPath();
       ctx.moveTo(cx + startRadius * cos, cy + startRadius * sin);
       ctx.lineTo(cx + radius * cos, cy + radius * sin);

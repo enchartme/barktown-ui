@@ -13,16 +13,17 @@ export function barcodeWidth(durationSec) {
   return Math.max(1, Math.min(MAX_BARCODE_WIDTH, Math.ceil(duration / BARCODE_INTERVAL_SECONDS)));
 }
 
-/**
- * Continuous orange -> dark-red scale, matching the diary hit visualization.
- *
- * @param {number} loudness
- */
-export function hitLoudnessColor(loudness) {
+/** Logarithmic, clamped 1–10x loudness domain shared by colors and bar lengths. */
+export function hitLoudnessFraction(loudness) {
   const low = 1;
-  const high = 4;
+  const high = 10;
   const value = Number.isFinite(loudness) ? loudness : low;
-  const amount = Math.max(0, Math.min(1, (value - low) / (high - low)));
+  return Math.log10(Math.max(low, Math.min(high, value)));
+}
+
+/** Continuous orange -> dark-red scale, matching the diary hit visualization. */
+export function hitLoudnessColor(loudness) {
+  const amount = hitLoudnessFraction(loudness);
   const from = [255, 165, 0];
   const to = [139, 0, 0];
   const [red, green, blue] = from.map((channel, index) => (
@@ -63,7 +64,7 @@ export function barcodeLines(metadata, width) {
 
 /** Match the orange-to-red loudness scale with light-to-dark neutral grey. */
 export function filteredHitColor(loudness) {
-  const amount = Math.max(0, Math.min(1, ((Number.isFinite(loudness) ? loudness : 1) - 1) / 3));
+  const amount = hitLoudnessFraction(loudness);
   const grey = Math.round(185 - amount * 90);
   return `rgb(${grey}, ${grey}, ${grey})`;
 }

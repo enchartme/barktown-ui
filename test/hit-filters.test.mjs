@@ -80,7 +80,7 @@ test('barcode paints rejected windows grey first, preserving accepted overlappin
     { x: 0, loudness: 1, filtered: false },
   ]);
   assert.equal(filteredHitColor(1), 'rgb(185, 185, 185)');
-  assert.equal(filteredHitColor(4), 'rgb(95, 95, 95)');
+  assert.equal(filteredHitColor(10), 'rgb(95, 95, 95)');
 });
 
 test('aggregate scores use the strongest positive and strongest of every negative class', async () => {
