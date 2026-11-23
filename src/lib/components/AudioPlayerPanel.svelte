@@ -1283,11 +1283,13 @@
                 opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
               />
               {#if editingAccess}
+                {@const scores = waveformHitMetadata.multilabelScores?.[i]}
+                {@const barkYapLabel = (scores?.bark ?? -1) >= (scores?.yap ?? -1) ? 'bark' : 'yap'}
                 <!-- Align labels on the timestamp line; only confidence
                      changes their height. Inset to keep diamonds whole. -->
                 {#each SAMPLE_LABELS as label}
-                  {@const score = waveformHitMetadata.multilabelScores?.[i]?.[label]}
-                  {#if Number.isFinite(score) && score > 0.1}
+                  {@const score = scores?.[label]}
+                  {#if Number.isFinite(score) && score > 0.1 && (label !== 'bark' && label !== 'yap' || label === barkYapLabel)}
                     {@const dy = 5 + (1 - Math.min(1, score)) * (VH - 10)}
                     <polygon
                       points="{hx},{dy - 5} {hx - 4},{dy} {hx},{dy + 5} {hx + 4},{dy}"
