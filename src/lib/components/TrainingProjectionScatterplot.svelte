@@ -8,7 +8,7 @@
 
   const GRID_SIZE = 12;
   const HIT_RADIUS = 8;
-  const POINT_RADIUS = 2;
+  const POINT_RADIUS = 1;
   const VIRIDIS_STOPS = [
     [68, 1, 84],
     [59, 82, 139],
