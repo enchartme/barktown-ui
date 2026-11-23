@@ -125,3 +125,12 @@ test('aggregate filtering drives public visibility, operator flags and bark coun
   assert.deepEqual(markFilteredHits(metadata, aggregateFilters).filteredHits, [true, true, false, false]);
   assert.equal(hiddenHitCount({ durationSec: 10 }, metadata, aggregateFilters), 2);
 });
+
+test('both delta controls span -1 to 1 and support wholly positive or negative intervals', async () => {
+  const { FILTER_DEFINITIONS, hitPassesFilters } = await import('../src/lib/hit-filters.js');
+  assert.deepEqual(FILTER_DEFINITIONS.find(filter => filter.name === 'delta').ranges, { min: [-1, 1], max: [-1, 1] });
+  assert.equal(hitPassesFilters({ bark: .75, wind: .25 }, { filter_delta_min: .25, filter_delta_max: .75 }), true);
+  assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: .25, filter_delta_max: .75 }), false);
+  assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: -.75, filter_delta_max: -.25 }), true);
+  assert.equal(hitPassesFilters({ bark: .75, wind: .25 }, { filter_delta_min: -.75, filter_delta_max: -.25 }), false);
+});

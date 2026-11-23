@@ -11,7 +11,7 @@ export const FILTER_DEFINITIONS = Object.freeze([
   { name: 'delta', description: 'Highest positive confidence minus highest negative confidence' },
 ].map(filter => Object.freeze({
   ...filter,
-  ranges: filter.name === 'delta' ? { min: [-1, 0], max: [0, 1] } : { min: [0, 1], max: [0, 1] },
+  ranges: filter.name === 'delta' ? { min: [-1, 1], max: [-1, 1] } : { min: [0, 1], max: [0, 1] },
 })));
 
 export const DEFAULT_HIT_FILTERS = Object.freeze(Object.fromEntries(
