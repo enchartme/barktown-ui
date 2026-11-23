@@ -82,3 +82,46 @@ test('barcode paints rejected windows grey first, preserving accepted overlappin
   assert.equal(filteredHitColor(1), 'rgb(185, 185, 185)');
   assert.equal(filteredHitColor(4), 'rgb(95, 95, 95)');
 });
+
+test('aggregate scores use the strongest positive and strongest of every negative class', async () => {
+  const { aggregateHitScores, NEGATIVE_LABELS } = await import('../src/lib/hit-filters.js');
+  assert.deepEqual(aggregateHitScores({ bark: .25, yap: .75, homestead: .5, traffic: .25 }), {
+    positive: .75, negative: .5, delta: .25,
+  });
+  for (const label of NEGATIVE_LABELS) {
+    assert.equal(aggregateHitScores({ bark: .25, yap: .5, [label]: .75 }).negative, .75);
+  }
+  assert.deepEqual(aggregateHitScores(null), { positive: null, negative: null, delta: null });
+  assert.deepEqual(aggregateHitScores({ yap: 0 }), { positive: 0, negative: null, delta: null });
+});
+
+test('positive and negative min/max ranges combine with individual label ranges', async () => {
+  const { hitPassesFilters } = await import('../src/lib/hit-filters.js');
+  const scores = { bark: .25, yap: .75, wildlife: .5, homestead: .25 };
+  assert.equal(hitPassesFilters(scores, { filter_positive_min: .75, filter_positive_max: .75, filter_negative_min: .5, filter_negative_max: .5 }), true);
+  for (const settings of [{ filter_positive_min: .8 }, { filter_positive_max: .7 }, { filter_negative_min: .6 }, { filter_negative_max: .4 }, { filter_yap_max: .7 }]) {
+    assert.equal(hitPassesFilters(scores, settings), false);
+  }
+});
+
+test('delta supports negative differences, inclusive boundaries and unavailable groups', async () => {
+  const { hitPassesFilters } = await import('../src/lib/hit-filters.js');
+  assert.equal(DEFAULT_HIT_FILTERS.filter_delta_min, -1);
+  assert.equal(DEFAULT_HIT_FILTERS.filter_delta_max, 1);
+  assert.equal(hitPassesFilters({ bark: 0, wind: 1 }), true);
+  assert.equal(hitPassesFilters({ bark: 1, wind: 0 }), true);
+  assert.equal(hitPassesFilters({ bark: .8, wind: .2 }, { filter_delta_max: .6 }), true);
+  assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: -.5 }), true);
+  assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: -.4 }), false);
+  assert.equal(hitPassesFilters({ yap: .75, traffic: .25 }, { filter_delta_max: .5 }), true);
+  assert.equal(hitPassesFilters({ yap: .75, traffic: .25 }, { filter_delta_max: .4 }), false);
+  assert.equal(hitPassesFilters({ bark: .9 }, { filter_negative_min: 1, filter_delta_min: 0, filter_delta_max: 0 }), true);
+});
+
+test('aggregate filtering drives public visibility, operator flags and bark counts together', async () => {
+  const { markFilteredHits } = await import('../src/lib/hit-filters.js');
+  const aggregateFilters = { ...DEFAULT_HIT_FILTERS, filter_negative_max: .5, filter_delta_max: .55 };
+  assert.deepEqual(filterHitMetadata(metadata, aggregateFilters).timestamps, [5, 7]);
+  assert.deepEqual(markFilteredHits(metadata, aggregateFilters).filteredHits, [true, true, false, false]);
+  assert.equal(hiddenHitCount({ durationSec: 10 }, metadata, aggregateFilters), 2);
+});

@@ -1,7 +1,7 @@
 <script>
   import { hitFilters, settingsError, loadSettings, saveSettings } from '$lib/settings.js';
-  import { DEFAULT_HIT_FILTERS } from '$lib/hit-filters.js';
-  import { SAMPLE_LABELS, sampleLabelColor } from '$lib/sample-labels.js';
+  import { DEFAULT_HIT_FILTERS, FILTER_DEFINITIONS } from '$lib/hit-filters.js';
+  import { sampleLabelColor } from '$lib/sample-labels.js';
 
   let open = $state(false);
   let drafts = $state({ ...DEFAULT_HIT_FILTERS });
@@ -25,11 +25,11 @@
     if (busy) return;
     error = '';
     saved = false;
-    for (const label of SAMPLE_LABELS) {
+    for (const { name: label, ranges } of FILTER_DEFINITIONS) {
       const min = drafts[`filter_${label}_min`];
       const max = drafts[`filter_${label}_max`];
-      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 1 || min > max) {
-        error = `${label}: enter a minimum and maximum between 0 and 1, with minimum ≤ maximum.`;
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < ranges.min[0] || min > ranges.min[1] || max < ranges.max[0] || max > ranges.max[1] || min > max) {
+        error = `${label}: minimum must be ${ranges.min[0]} to ${ranges.min[1]}, maximum ${ranges.max[0]} to ${ranges.max[1]}, with minimum ≤ maximum.`;
         return;
       }
     }
@@ -47,14 +47,22 @@
   {#if open}
     <section class="settings-card" aria-label="Window filter settings">
       <div class="card-heading"><strong>Window filters</strong><button onclick={() => open = false} aria-label="Close window filters">✕</button></div>
-      <p>Show windows whose available label scores fall within every range. Applies to everyone’s diary/report windows and bark counts. Missing scores stay visible.</p>
+      <p>Show windows whose available label and aggregate scores fall within every range. Applies to everyone’s diary/report windows and bark counts. Missing scores stay visible.</p>
         <div class="filter-grid">
-          <span>Label</span><span>Min</span><span>Max</span>
-          {#each SAMPLE_LABELS as label}
-            <span class="sample-label-pill" style:background={sampleLabelColor(label)}>{label}</span>
+          <span>Filter</span><span>Min</span><span>Max</span>
+          {#each FILTER_DEFINITIONS as filter}
+            {@const label = filter.name}
+            {#if label === 'negative' || label === 'delta'}
+              <hr class="filter-divider" />
+            {/if}
+            {#if label === 'positive' || label === 'negative' || label === 'delta'}
+              <span class="aggregate-filter" title={filter.description}>{label}</span>
+            {:else}
+              <span class="sample-label-pill" style:background={sampleLabelColor(label)} title={filter.description}>{label}</span>
+            {/if}
             {#each ['min', 'max'] as bound}
               <label class="slider-control">
-                <input type="range" min="0" max="1" step="0.01" aria-label="{label} {bound === 'min' ? 'minimum' : 'maximum'}" bind:value={drafts[`filter_${label}_${bound}`]} oninput={() => saved = false} onchange={() => save()} disabled={busy} />
+                <input type="range" min={filter.ranges[bound][0]} max={filter.ranges[bound][1]} step="0.01" aria-label="{label} {bound === 'min' ? 'minimum' : 'maximum'}" bind:value={drafts[`filter_${label}_${bound}`]} oninput={() => saved = false} onchange={() => save()} disabled={busy} />
                 <output>{drafts[`filter_${label}_${bound}`].toFixed(2)}</output>
               </label>
             {/each}
@@ -75,6 +83,8 @@
   .card-heading strong { font-family: var(--font-heading); font-size: var(--font-size-small); font-weight: var(--font-heading-weight); }
   p { line-height: 1.4; margin: 10px 0; }
   .filter-grid { display: grid; grid-template-columns: max-content repeat(2, minmax(0, 1fr)); gap: 8px; align-items: center; }
+  .filter-divider { grid-column: 1 / -1; width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #e0e0dc; }
+  .aggregate-filter { font-weight: 700; }
   .sample-label-pill { justify-self: start; font-family: var(--font-monospace); font-size: var(--font-size-tiny); font-weight: 700; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 8px; color: #fff; }
   .slider-control { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
   input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: #1a1a1a; cursor: pointer; }

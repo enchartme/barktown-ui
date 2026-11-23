@@ -1,17 +1,44 @@
 import { SAMPLE_LABELS } from './sample-labels.js';
 import { trimHitMetadata } from './diary-trim.js';
 
+export const POSITIVE_LABELS = Object.freeze(['bark', 'yap']);
+export const NEGATIVE_LABELS = Object.freeze(SAMPLE_LABELS.filter(label => !POSITIVE_LABELS.includes(label)));
+export const FILTER_DEFINITIONS = Object.freeze([
+  { name: 'positive', description: 'Highest confidence among bark and yap' },
+  ...POSITIVE_LABELS.map(name => ({ name, description: `${name} confidence` })),
+  { name: 'negative', description: 'Highest confidence among all labels except bark and yap' },
+  ...NEGATIVE_LABELS.map(name => ({ name, description: `${name} confidence` })),
+  { name: 'delta', description: 'Highest positive confidence minus highest negative confidence' },
+].map(filter => Object.freeze({
+  ...filter,
+  ranges: filter.name === 'delta' ? { min: [-1, 0], max: [0, 1] } : { min: [0, 1], max: [0, 1] },
+})));
+
 export const DEFAULT_HIT_FILTERS = Object.freeze(Object.fromEntries(
-  SAMPLE_LABELS.flatMap(label => [[`filter_${label}_min`, 0], [`filter_${label}_max`, 1]]),
+  FILTER_DEFINITIONS.flatMap(({ name, ranges }) => [
+    [`filter_${name}_min`, ranges.min[0]], [`filter_${name}_max`, ranges.max[1]],
+  ]),
 ));
 
-/** All available scores must meet inclusive bounds. Missing diagnostics pass. */
+/** Missing scores do not contribute to a group maximum; no scores means unavailable. */
+export function aggregateHitScores(scores) {
+  const maximum = labels => {
+    const values = labels.map(label => scores?.[label]).filter(Number.isFinite);
+    return values.length ? Math.max(...values) : null;
+  };
+  const positive = maximum(POSITIVE_LABELS);
+  const negative = maximum(NEGATIVE_LABELS);
+  return { positive, negative, delta: positive === null || negative === null ? null : positive - negative };
+}
+
+/** Every available individual and aggregate score must meet inclusive bounds. */
 export function hitPassesFilters(scores, settings = DEFAULT_HIT_FILTERS) {
-  return SAMPLE_LABELS.every(label => {
-    const score = scores?.[label];
+  const values = { ...scores, ...aggregateHitScores(scores) };
+  return FILTER_DEFINITIONS.every(({ name }) => {
+    const score = values[name];
     return !Number.isFinite(score) || (
-      score >= (settings[`filter_${label}_min`] ?? 0)
-      && score <= (settings[`filter_${label}_max`] ?? 1)
+      score >= (settings[`filter_${name}_min`] ?? DEFAULT_HIT_FILTERS[`filter_${name}_min`]) - Number.EPSILON
+      && score <= (settings[`filter_${name}_max`] ?? DEFAULT_HIT_FILTERS[`filter_${name}_max`]) + Number.EPSILON
     );
   });
 }
