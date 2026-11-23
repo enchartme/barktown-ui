@@ -198,6 +198,7 @@
         "
       >
         <DiaryEntry
+          {operatorAccess}
           {entry}
           height={FLAG_LANE_HEIGHT + 4}
           isSelected={selectedId === entry.id}

@@ -1,4 +1,5 @@
 <script>
+  import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
@@ -341,6 +342,7 @@
     {#if operatorAccess}<a class="nav-link" href="/quality">Quality</a>{/if}
     <a class="nav-link" href="/method">Method</a>
 
+    {#if operatorAccess}<FilterSettings />{/if}
     <GoblinPiStatus />
   </header>{/if}
 

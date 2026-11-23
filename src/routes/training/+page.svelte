@@ -1,4 +1,5 @@
 <script>
+  import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { page } from '$app/state';
   import { onMount, tick } from 'svelte';
@@ -1720,6 +1721,7 @@
       {#if editingAccess}<a href="/quality">Quality</a>{/if}
       <a href="/method">Method</a>
     </nav>
+    {#if editingAccess}<FilterSettings />{/if}
     <GoblinPiStatus />
   </header>{/if}
 

@@ -54,6 +54,7 @@ export function trimHitMetadata(metadata, entry) {
   return {
     ...metadata,
     timestamps: indices.map(index => metadata.timestamps[index] - bounds.startSec),
+    filteredHits: project(metadata.filteredHits),
     confidences: project(metadata.confidences),
     loudnesses: project(metadata.loudnesses),
     multilabelScores: Array.isArray(metadata.multilabelScores)

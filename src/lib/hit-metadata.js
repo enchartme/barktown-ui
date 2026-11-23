@@ -126,11 +126,11 @@ export function formatAudioPanelTitle(entry, metadata) {
 }
 
 /** Expanded playback statistics without a filename/sample descriptor. */
-export function formatAudioPanelStats(metadata, durationSec) {
+export function formatAudioPanelStats(metadata, durationSec, filteredCount = null) {
   if (!metadata) return '';
   const { hitCount, maximumLoudness, meanLoudness, density } =
     hitMetadataStats(metadata, durationSec);
-  return `Barks: ${hitCount}, Density: ${density} bpm, Loudness Peak: ${maximumLoudness.toFixed(1)}x, Mean: ${meanLoudness.toFixed(1)}x`;
+  return `Barks: ${hitCount}${filteredCount === null ? '' : ` (${filteredCount} filtered)`}, Density: ${density} bpm, Loudness Peak: ${maximumLoudness.toFixed(1)}x, Mean: ${meanLoudness.toFixed(1)}x`;
 }
 
 /**

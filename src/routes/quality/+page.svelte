@@ -1,4 +1,5 @@
 <script>
+  import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { onMount } from 'svelte';
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
   import { probeEditingAccess } from '$lib/editing-access.js';
@@ -132,6 +133,7 @@
       {#if operatorAccess}<a class="current" aria-current="page" href="/quality">Quality</a>{/if}
       <a href="/method">Method</a>
     </nav>
+    {#if operatorAccess}<FilterSettings />{/if}
     <GoblinPiStatus />
   </header>
 

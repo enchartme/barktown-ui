@@ -1,4 +1,9 @@
 <script>
+  import { hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
+  import { hitFilters } from '$lib/settings.js';
+  import { hiddenHitCount } from '$lib/hit-filters.js';
+  import FilterSettings from '$lib/components/FilterSettings.svelte';
+  import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { reanalysis } from '$lib/reanalysis.js';
   import ReanalyzeDayButton from '$lib/components/ReanalyzeDayButton.svelte';
   import { page } from '$app/state';
@@ -7,7 +12,7 @@
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
   import ReportBarcode from '$lib/components/ReportBarcode.svelte';
   import { fetchDiarySummary } from '$lib/diary-summary.js';
-  import { hitMetadataById, loadHitMetadata } from '$lib/hit-metadata.js';
+  import { loadHitMetadata } from '$lib/hit-metadata.js';
   import { reportSentenceNeedsPeriod } from '$lib/report-annotations.js';
   import {
     hydrateRecordingCommentAnnotations,
@@ -83,13 +88,17 @@
         ? day.entries
         : [...day.entries].reverse();
       const serverSummary = summaryByDate.get(day.date);
+      const filteredBarks = day.entries.reduce(
+        (sum, entry) => sum + hiddenHitCount(entry, $rawHitMetadataById.get(entry.id), $hitFilters), 0,
+      );
       return {
         ...day,
         entries: orderedEntries,
         summary: {
           disturbances: serverSummary?.records ?? 0,
           totalDurationSec: serverSummary?.disturbedTimeSec ?? 0,
-          barks: serverSummary?.barks ?? 0,
+          barks: Math.max(0, (serverSummary?.barks ?? 0) - filteredBarks),
+          filteredBarks,
         },
       };
     });
@@ -97,7 +106,8 @@
   const reportTotals = $derived({
     disturbances: periodSummary.totals.records,
     totalDurationSec: periodSummary.totals.disturbedTimeSec,
-    barks: periodSummary.totals.barks,
+    barks: Math.max(0, periodSummary.totals.barks - days.reduce((sum, day) => sum + day.summary.filteredBarks, 0)),
+    filteredBarks: days.reduce((sum, day) => sum + day.summary.filteredBarks, 0),
   });
   const orderedReportEntries = $derived(days.flatMap((day) => day.entries));
 
@@ -443,6 +453,7 @@
       {#if operatorAccess}<a href="/quality">Quality</a>{/if}
       <a href="/method">Method</a>
     </nav>
+    {#if operatorAccess}<FilterSettings />{/if}
     <GoblinPiStatus />
   </header>{/if}
 
@@ -531,7 +542,7 @@
         </div>
         <div class="total-metric">
           <span>Barks</span>
-          <strong>{reportTotals.barks.toLocaleString()}</strong>
+          <strong>{reportTotals.barks.toLocaleString()}{#if operatorAccess} <small>({reportTotals.filteredBarks.toLocaleString()} filtered)</small>{/if}</strong>
         </div>
       </section>
       <div class="report-days">
@@ -544,7 +555,7 @@
                 <span aria-hidden="true">·</span>
                 {formatDisturbedTime(day.summary.totalDurationSec)} disturbed
                 <span aria-hidden="true">·</span>
-                {countLabel(day.summary.barks, 'bark')}
+                {countLabel(day.summary.barks, 'bark')}{#if operatorAccess} ({day.summary.filteredBarks.toLocaleString()} filtered){/if}
                 {#if operatorAccess}<span class="day-action screen-only"><ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} /></span>{/if}
               </small>
             </h2>
@@ -579,7 +590,7 @@
                         durationSec={entry.durationSec}
                         trimStartMs={entry.trimStartMs}
                         trimStopMs={entry.trimStopMs}
-                        metadata={$hitMetadataById.get(entry.id) ?? null}
+                        metadata={(operatorAccess ? $markedHitMetadataById : $hitMetadataById).get(entry.id) ?? null}
                       />
                       {/if}
                       {#if noteLabels.length === 0 && needsPeriod}

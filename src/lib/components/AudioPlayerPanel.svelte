@@ -1,8 +1,9 @@
 <script>
+  import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { onMount, tick } from 'svelte';
   import { formatDuration, formatDate, downsampleWaveform, waveformNorm, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
-  import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, hitMetadataById, setHitMetadata } from '$lib/hit-metadata.js';
+  import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata } from '$lib/hit-metadata.js';
   import { recordingComment } from '$lib/recording-comments.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
@@ -273,7 +274,10 @@
   // ── Hit metadata (bark timestamps + confidence + loudness from goblin) ────
   const hitMetadata = $derived($hitMetadataById.get(entry.id) ?? null);
   const visibleHitMetadata = $derived(trimHitMetadata(hitMetadata, entry));
-  const waveformHitMetadata = $derived(editingAccess ? hitMetadata : visibleHitMetadata);
+  const waveformHitMetadata = $derived(editingAccess ? $markedHitMetadataById.get(entry.id) ?? null : visibleHitMetadata);
+  const filteredHitCount = $derived(editingAccess
+    ? trimHitMetadata($markedHitMetadataById.get(entry.id) ?? null, entry)?.filteredHits?.filter(Boolean).length ?? 0
+    : 0);
   const idleHitOpacity = $derived(
     waveformDuration < 4 * 60 ? 0.8
       : waveformDuration < 6 * 60 ? 0.6
@@ -294,6 +298,7 @@
           timestamp: waveformHitMetadata.timestamps[hoveredHitIndex],
           confidence: waveformHitMetadata.confidences[hoveredHitIndex],
           loudness: waveformHitMetadata.loudnesses[hoveredHitIndex],
+          filtered: waveformHitMetadata.filteredHits?.[hoveredHitIndex] ?? false,
           scores: Object.entries(waveformHitMetadata.multilabelScores?.[hoveredHitIndex] ?? {})
             .filter(([, score]) => Number.isFinite(score))
             .sort((a, b) => b[1] - a[1]),
@@ -1030,7 +1035,7 @@
   const formattedCur   = $derived(formatDuration(visibleCurrentTime));
   const displayEntry = $derived({ ...entry, durationSec: visibleDuration });
   const displayLabel   = $derived(formatAudioPanelTitle(displayEntry, visibleHitMetadata));
-  const analysisSummary = $derived(formatAudioPanelStats(visibleHitMetadata, visibleDuration));
+  const analysisSummary = $derived(formatAudioPanelStats(visibleHitMetadata, visibleDuration, editingAccess ? filteredHitCount : null));
   const analysisParameters = $derived(formatAudioPanelAnalysisParameters(hitMetadata));
   const audioSrc       = $derived(`${ASSET_BASE}/${entry.audioPath}`);
 </script>
@@ -1250,6 +1255,8 @@
             {@const hx = (ts / waveformDuration) * VW}
             {@const bandStart = Math.max(0, hx - winPx / 2)}
             {@const bandWidth = Math.max(0, Math.min(VW, hx + winPx / 2) - bandStart)}
+            {@const isFiltered = waveformHitMetadata.filteredHits?.[i] ?? false}
+            {@const markerRgb = isFiltered ? '140, 140, 140' : '230, 120, 0'}
             {@const conf = waveformHitMetadata.confidences[i]}
             {@const tickAlpha = 0.45 + conf * 0.45}
             <g
@@ -1265,13 +1272,13 @@
                 width={bandWidth}
                 height={VH}
                 opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
-                fill="rgba(230, 120, 0, {hoveredHitIndex === i ? 0.5 : 0.1})"
+                fill="rgba({markerRgb}, {hoveredHitIndex === i ? 0.5 : 0.1})"
               />
               <!-- Tick at the window timestamp -->
               <line
                 x1={hx} y1="0"
                 x2={hx} y2={VH}
-                stroke="rgba(230, 120, 0, {hoveredHitIndex === i ? 1 : tickAlpha})"
+                stroke="rgba({markerRgb}, {hoveredHitIndex === i ? 1 : tickAlpha})"
                 stroke-width="1.5"
                 opacity={hoveredHitIndex === i ? 1 : idleHitOpacity}
               />
@@ -1285,7 +1292,7 @@
                     <polygon
                       points="{hx},{dy - 5} {hx - 4},{dy} {hx},{dy + 5} {hx + 4},{dy}"
                       fill={sampleLabelColor(label)}
-                      opacity={hoveredHitIndex === i ? 1 : 0.8}
+                      opacity={hoveredHitIndex === i ? 1 : isFiltered ? 0.3 : 0.8}
                       stroke="white"
                       stroke-width="1"
                       vector-effect="non-scaling-stroke"
@@ -1378,6 +1385,7 @@
             class="hit-diagnostics"
             style:left="clamp(0px, calc({(hoveredHit.timestamp / waveformDuration) * 100}% - 4.5rem), calc(100% - 9rem))"
           >
+            {#if hoveredHit.filtered}<div class="filtered-hit-note">Filtered</div>{/if}
             <div class="hit-score-row">
               <span>C{hoveredHit.confidence.toFixed(2)}</span>
               <span class="hit-score-track" aria-hidden="true">

@@ -1,5 +1,5 @@
 <script>
-  import { barcodeLines, barcodeWidth, hitLoudnessColor } from '$lib/report-barcode.js';
+  import { barcodePresentationLines, barcodeWidth, hitLoudnessColor, filteredHitColor } from '$lib/report-barcode.js';
   import { formatDuration } from '$lib/utils.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
 
@@ -11,8 +11,9 @@
   const trimBounds = $derived(diaryTrimBounds(entry));
   const visibleMetadata = $derived(trimHitMetadata(metadata, entry));
   const width = $derived(barcodeWidth(trimBounds.durationSec));
-  const lines = $derived(barcodeLines(visibleMetadata, width));
-  const hitCount = $derived(Array.isArray(visibleMetadata?.timestamps) ? visibleMetadata.timestamps.length : 0);
+  const lines = $derived(barcodePresentationLines(visibleMetadata, width));
+  const filteredCount = $derived(visibleMetadata?.filteredHits?.filter(Boolean).length ?? 0);
+  const hitCount = $derived((visibleMetadata?.timestamps?.length ?? 0) - filteredCount);
 
   $effect(() => {
     const element = canvas;
@@ -31,7 +32,7 @@
     context.clearRect(0, 0, cssWidth, cssHeight);
 
     for (const line of currentLines) {
-      context.fillStyle = hitLoudnessColor(line.loudness);
+      context.fillStyle = line.filtered ? filteredHitColor(line.loudness) : hitLoudnessColor(line.loudness);
       context.fillRect(line.x, 0, 1, cssHeight);
     }
   });
@@ -40,7 +41,7 @@
 <span
   class="barcode-figure"
   role="img"
-  aria-label={`${hitCount} detected ${hitCount === 1 ? 'bark' : 'barks'} over ${formatDuration(trimBounds.durationSec)}`}
+  aria-label={`${hitCount} detected ${hitCount === 1 ? 'bark' : 'barks'}${filteredCount ? ` (${filteredCount} filtered)` : ''} over ${formatDuration(trimBounds.durationSec)}`}
 >
   <canvas
     bind:this={canvas}

@@ -1,5 +1,7 @@
 <script>
-  import { formatDiaryEntryTitle, hitMetadataById } from '$lib/hit-metadata.js';
+  import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
+  import { formatDiaryEntryTitle } from '$lib/hit-metadata.js';
+  import { filteredHitColor } from '$lib/report-barcode.js';
   import { recordingComment } from '$lib/recording-comments.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { durationAreaRadius } from '$lib/diary-entry-visual.js';
@@ -7,12 +9,13 @@
   /**
    * @type {{
    *   entry: import('$lib/types').Entry;
+   *   operatorAccess?: boolean;
    *   height: number;
    *   isSelected: boolean;
    *   onselect: (entry: import('$lib/types').Entry) => void;
    * }}
    */
-  let { entry, height, isSelected, onselect } = $props();
+  let { entry, height, isSelected, onselect, operatorAccess = false } = $props();
 
   function handleClick() {
     onselect(entry);
@@ -61,6 +64,9 @@
   const hitMetadata = $derived($hitMetadataById.get(entry.id) ?? null);
   const trimBounds = $derived(diaryTrimBounds(entry));
   const visibleHitMetadata = $derived(trimHitMetadata(hitMetadata, entry));
+  const drawnHitMetadata = $derived(operatorAccess
+    ? trimHitMetadata($markedHitMetadataById.get(entry.id) ?? null, entry)
+    : visibleHitMetadata);
   const titleLabel = $derived(formatDiaryEntryTitle(
     { ...entry, durationSec: trimBounds.durationSec },
     visibleHitMetadata,
@@ -153,16 +159,18 @@
       ctx.stroke();
     }
 
-    if (!visibleHitMetadata) return;
+    if (!drawnHitMetadata) return;
 
     const dur = trimBounds.durationSec || 1;
     ctx.lineWidth = 1;
-    visibleHitMetadata.timestamps.forEach((ts, i) => {
+    drawnHitMetadata.timestamps.forEach((ts, i) => {
       // 0 = vertical axis (up), increasing clockwise over the full clip duration.
       const angle = (ts / dur) * Math.PI * 2 - Math.PI / 2;
       const cos = Math.cos(angle), sin = Math.sin(angle);
-      const startRadius = radius - hitLengthFraction(visibleHitMetadata.confidences[i]) * (radius - INNER_RADIUS);
-      ctx.strokeStyle = hitColor(visibleHitMetadata.loudnesses[i]);
+      const startRadius = radius - hitLengthFraction(drawnHitMetadata.confidences[i]) * (radius - INNER_RADIUS);
+      ctx.strokeStyle = drawnHitMetadata.filteredHits?.[i]
+        ? filteredHitColor(drawnHitMetadata.loudnesses[i])
+        : hitColor(drawnHitMetadata.loudnesses[i]);
       ctx.beginPath();
       ctx.moveTo(cx + startRadius * cos, cy + startRadius * sin);
       ctx.lineTo(cx + radius * cos, cy + radius * sin);

@@ -60,3 +60,19 @@ export function barcodeLines(metadata, width) {
     .sort(([left], [right]) => left - right)
     .map(([x, loudness]) => ({ x, loudness }));
 }
+
+/** Match the orange-to-red loudness scale with light-to-dark neutral grey. */
+export function filteredHitColor(loudness) {
+  const amount = Math.max(0, Math.min(1, ((Number.isFinite(loudness) ? loudness : 1) - 1) / 3));
+  const grey = Math.round(185 - amount * 90);
+  return `rgb(${grey}, ${grey}, ${grey})`;
+}
+
+/** Draw grey columns first so retained hits win when windows share a column. */
+export function barcodePresentationLines(metadata, width) {
+  const group = filtered => barcodeLines({
+    ...metadata,
+    timestamps: metadata?.timestamps?.map((timestamp, i) => Boolean(metadata.filteredHits?.[i]) === filtered ? timestamp : NaN),
+  }, width).map(line => ({ ...line, filtered }));
+  return [...group(true), ...group(false)];
+}
