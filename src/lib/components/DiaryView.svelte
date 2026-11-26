@@ -179,11 +179,23 @@
 
   /** Refresh every projection after an approval is set or cleared. */
   function handleApprovalChange(entry, approved) {
-    const updated = { ...entry, approved };
-    entries = entries.map(item => item.id === entry.id ? { ...item, approved } : item);
+    const approvalSource = entry.approvalSource ?? null;
+    const updated = { ...entry, approved, approvalSource };
+    entries = entries.map(item => item.id === entry.id ? { ...item, approved, approvalSource } : item);
     if (selectedEntry?.id === entry.id) selectedEntry = updated;
     if (panelEntry?.id === entry.id) panelEntry = updated;
   }
+
+  onMount(() => {
+    function update(event) {
+      const updates = new Map(event.detail.items.map(item => [item.id, item]));
+      entries = entries.map(entry => updates.has(entry.id) ? { ...entry, ...updates.get(entry.id) } : entry);
+      if (selectedEntry && updates.has(selectedEntry.id)) selectedEntry = { ...selectedEntry, ...updates.get(selectedEntry.id) };
+      if (panelEntry && updates.has(panelEntry.id)) panelEntry = { ...panelEntry, ...updates.get(panelEntry.id) };
+    }
+    window.addEventListener('approval-update', update);
+    return () => window.removeEventListener('approval-update', update);
+  });
 
   /**
    * Delete a diary entry via the API, then remove it from the local list

@@ -576,6 +576,9 @@
         trimStartMs: saved?.trimStartMs ?? null,
         trimStopMs: saved?.trimStopMs ?? null,
       });
+      if (saved && Object.hasOwn(saved, 'approved')) {
+        onapprovalchange?.({ ...entry, trimStartMs: saved.trimStartMs, trimStopMs: saved.trimStopMs, approvalSource: saved.approvalSource ?? null }, saved.approved);
+      }
       if (audioEl) {
         audioEl.pause();
         audioEl.currentTime = trimStartMs / 1000;
@@ -610,7 +613,7 @@
       if (!shouldApprove && saved?.approved !== null) {
         throw new Error('Approval response has an invalid shape');
       }
-      onapprovalchange?.(entry, saved.approved);
+      onapprovalchange?.({ ...entry, approvalSource: saved.approvalSource ?? null }, saved.approved);
     } catch (e) {
       approvalError = e?.message ?? 'Could not update approval.';
     } finally {
@@ -811,7 +814,7 @@
         trimStartMs: data?.trimStartMs ?? null,
         trimStopMs: data?.trimStopMs ?? null,
       };
-      const updatedEntry = { ...entry, ...savedTrim, approved: data?.approved ?? null };
+      const updatedEntry = { ...entry, ...savedTrim, approved: data?.approved ?? null, approvalSource: data?.approvalSource ?? null };
       ontrimchange?.(updatedEntry, savedTrim);
       onapprovalchange?.(updatedEntry, updatedEntry.approved);
       if (audioEl) {
@@ -1088,7 +1091,7 @@
           disabled={approvalSaving}
           aria-label={entry.approved ? 'Remove recording approval' : 'Approve recording'}
           aria-pressed={Boolean(entry.approved)}
-          title={entry.approved ? 'Remove approval (P)' : 'Approve recording (P)'}
+          title={entry.approved ? `${entry.approvalSource === 'auto' ? 'Automatically approved' : entry.approvalSource === 'manual' ? 'Manually approved' : 'Approved'} ${new Date(entry.approved).toLocaleString()}. Remove approval (P)` : 'Approve recording (P)'}
         >{entry.approved ? '✅' : '👍'}</button>
       {/if}
       {#if editingAccess && onmovesample && !entry.sampleId}

@@ -306,3 +306,39 @@ index.json
 | Preprocessing | Node.js ES modules (no npm deps) |
 | Audio analysis | ffprobe (duration), audiowaveform (peaks) |
 | Styling | Scoped `<style>` per component, no CSS framework |
+
+## Approval controls
+
+On Tailnet, the gear menu separates **Hide barks from view** from
+**Auto-approve**. Slider changes save on release. Automatic approval defaults
+are mean loudness ≥ 4x, density ≥ 50%, delta mean ≥ 0.90, and delta population
+sigma ≤ 0.10. **Approval conditions** selects **AND — all 4** (the default)
+or **OR — at least 1**. The selector saves immediately and updates the paragraph
+above the controls. Density uses the window duration
+from hit metadata. Approval metrics include hidden hits inside the saved trim;
+view filters do not affect approval decisions. Missing diagnostics or fewer
+than two windows leave the record for review.
+
+Diary and Report day cards offer **Auto-approve** next to re-analysis. It asks
+“Auto-approve unapproved records?” before calling the private server, then
+shows the number approved and left for review. It preserves existing approvals
+and refreshes approval state in the current view and open player. It is an
+explicit day operation, not a background job triggered by slider changes.
+
+The player approval tooltip identifies new manual/automatic approvals and their
+timestamps. Analysis parameters show the analysis save timestamp when available.
+Historical records may have unknown approval source and analysis timestamp.
+Deploy the corresponding server changes first; approval settings, decisions,
+and audit history are persisted on the server.
+
+**Trim sparse tails (s)** ranges from 0–120 seconds; 0 disables it by default.
+**Bundle (count)** ranges from 1–5, defaults to 1, and is inactive when trimming
+is off. A compact bundle of B windows must fit within the time limit and have
+an extra supporting window strictly closer than that limit before or after
+it. Keep from the first qualifying group through the last, preserving multiple
+sessions and all gaps and hits between them. B=1 needs two nearby windows;
+B=2 needs a compact pair and a nearby third. No qualifying group keeps the
+current range. The server evaluates approval on the proposed trim and saves
+the trim only if the record passes. It preserves the original audio and raw
+windows and audits old/new bounds. Results include a trimmed count and update
+the player, day views, and report summaries immediately.

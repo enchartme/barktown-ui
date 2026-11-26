@@ -1,5 +1,6 @@
 <script>
   import ReanalyzeDayButton from './ReanalyzeDayButton.svelte';
+  import AutoApproveDayButton from './AutoApproveDayButton.svelte';
   import { assignLanes, parseTimeToMinutes, formatDate } from '$lib/utils.js';
   import { DIARY_DAY_COLOR, DIARY_NIGHT_COLOR, sunTimeToLocalMinutes } from '$lib/sun-time.js';
   import { diaryTrimBounds } from '$lib/diary-trim.js';
@@ -158,7 +159,12 @@
     <span class="date-rest">{dateLabel.split(',').slice(1).join(',').trim()}</span>
     <span class="date-daym">{dateDayM}</span>
     <span class="date-year-mobile">{dateYear}</span>
-    {#if operatorAccess}<ReanalyzeDayButton {date} disabled={!entries.some(e => e.reanalyzable)} />{/if}
+    {#if operatorAccess}
+      <div class="day-actions">
+        <ReanalyzeDayButton {date} disabled={!entries.some(e => e.reanalyzable)} />
+        <AutoApproveDayButton {date} disabled={!entries.some(e => e.kind === 'audio' && !e.approved)} />
+      </div>
+    {/if}
   </div>
 
   <!-- Track: fills remaining row width, no horizontal scroll -->
@@ -217,6 +223,7 @@
 </div>
 
 <style>
+  .day-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.4rem; }
   .day-row {
     display: flex;
     align-items: flex-start;

@@ -6,6 +6,7 @@
   import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { reanalysis } from '$lib/reanalysis.js';
   import ReanalyzeDayButton from '$lib/components/ReanalyzeDayButton.svelte';
+  import AutoApproveDayButton from '$lib/components/AutoApproveDayButton.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import AudioPlayerPanel from '$lib/components/AudioPlayerPanel.svelte';
@@ -307,10 +308,22 @@
   }
 
   function handleApprovalChange(entry, approved) {
-    const updated = { ...entry, approved };
-    entries = entries.map(item => item.id === entry.id ? { ...item, approved } : item);
+    const approvalSource = entry.approvalSource ?? null;
+    const updated = { ...entry, approved, approvalSource };
+    entries = entries.map(item => item.id === entry.id ? { ...item, approved, approvalSource } : item);
     if (panelEntry?.id === entry.id) panelEntry = updated;
   }
+
+  onMount(() => {
+    function update(event) {
+      const updates = new Map(event.detail.items.map(item => [item.id, item]));
+      entries = entries.map(entry => updates.has(entry.id) ? { ...entry, ...updates.get(entry.id) } : entry);
+      if (panelEntry && updates.has(panelEntry.id)) panelEntry = { ...panelEntry, ...updates.get(panelEntry.id) };
+      if (event.detail.trimmed) void refreshPeriodSummary();
+    }
+    window.addEventListener('approval-update', update);
+    return () => window.removeEventListener('approval-update', update);
+  });
 
   async function deleteEntry(entry) {
     try {
@@ -556,7 +569,10 @@
                 {formatDisturbedTime(day.summary.totalDurationSec)} disturbed
                 <span aria-hidden="true">·</span>
                 {countLabel(day.summary.barks, 'bark')}{#if operatorAccess} ({day.summary.filteredBarks.toLocaleString()} filtered){/if}
-                {#if operatorAccess}<span class="day-action screen-only"><ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} /></span>{/if}
+                {#if operatorAccess}<span class="day-action screen-only">
+                  <ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} />
+                  <AutoApproveDayButton date={day.date} disabled={!day.entries.some(e => !e.approved)} />
+                </span>{/if}
               </small>
             </h2>
 
@@ -932,7 +948,7 @@
     font-weight: 500;
   }
 
-  .day-action { margin-left: 0.3rem; }
+  .day-action { display: inline-flex; align-items: center; margin-left: 0.3rem; }
 
   .recordings,
   .no-recordings {

@@ -14,6 +14,7 @@ import { PUBLIC_API_BASE } from './utils.js';
  *   modelTrainedAt: string | null,
  *   analysisSettings: Record<string, unknown>,
  *   analysisTrigger: 'automatic' | 'manual',
+ *   analyzedAt?: string | null,
  *   createdAt: string
  * }} HitMetadata
  */
@@ -151,6 +152,7 @@ export function formatAudioPanelAnalysisParameters(metadata) {
   const monitor = settings.monitor;
   const parameters = [
     ['Trigger', metadata.analysisTrigger],
+    ['Analyzed', formatLocalAnalysisTimestamp(metadata.analyzedAt)],
     ['Trained', formatLocalAnalysisTimestamp(classifier?.trained_at)],
     ['Threshold', monitor?.candidate_threshold],
     ['Refractory', formatSeconds(monitor?.hit_refractory_s)],
