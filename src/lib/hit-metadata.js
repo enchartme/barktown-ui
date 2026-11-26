@@ -139,32 +139,42 @@ export function formatAudioPanelStats(metadata, durationSec, filteredCount = nul
 }
 
 /**
- * Format the small, stable subset of analysis provenance shown in the audio
- * panel, with compact trigger and training-date labels.
+ * Build the analysis provenance shown in the audio panel, with compact dates
+ * and full local timestamps for their hover tooltips.
  *
  * @param {HitMetadata | null | undefined} metadata
  */
-export function formatAudioPanelAnalysisParameters(metadata) {
+export function audioPanelAnalysisParameters(metadata) {
   const settings = metadata?.analysisSettings;
-  if (!settings || typeof settings !== 'object') return '';
+  if (!settings || typeof settings !== 'object') return [];
 
   const classifier = settings.classifier;
   const monitor = settings.monitor;
   const parameters = [
-    ['Trigger', metadata.analysisTrigger === 'automatic' ? 'auto' : metadata.analysisTrigger],
-    ['Analyzed', formatLocalAnalysisTimestamp(metadata.analyzedAt)],
-    ['Trained', formatLocalAnalysisDate(classifier?.trained_at)],
+    ['Trigger', metadata.analysisTrigger === 'automatic' ? 'AUTO' : metadata.analysisTrigger?.toUpperCase()],
+    ['Analyzed', formatLocalAnalysisDate(metadata.analyzedAt), formatLocalAnalysisTimestamp(metadata.analyzedAt)],
+    ['Trained', formatLocalAnalysisDate(classifier?.trained_at), formatLocalAnalysisTimestamp(classifier?.trained_at)],
     ['Threshold', monitor?.candidate_threshold],
     ['Refractory', formatSeconds(monitor?.hit_refractory_s)],
     ['Window', formatSeconds(monitor?.inference_window_s)],
     ['Step', formatSeconds(monitor?.score_interval_s)],
   ];
 
-  const details = parameters
+  return parameters
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([name, value]) => `${name}: ${String(value)}`)
+    .map(([name, value, title]) => ({
+      name,
+      value: String(value),
+      title,
+      text: name === 'Trigger' ? String(value) : `${name}: ${String(value)}`,
+    }));
+}
+
+/** Plain-text representation of the panel's analysis provenance. */
+export function formatAudioPanelAnalysisParameters(metadata) {
+  return audioPanelAnalysisParameters(metadata)
+    .map(({ text }) => text)
     .join(' · ');
-  return details ? `${details}` : '';
 }
 
 function formatSeconds(value) {
@@ -184,10 +194,12 @@ function formatLocalAnalysisTimestamp(value) {
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString(undefined, {
     year: 'numeric',
-    month: 'short',
+    month: 'long',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
   });
 }
 

@@ -4,7 +4,7 @@
   import { onMount, tick } from 'svelte';
   import { formatDuration, formatDate, downsampleWaveform, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
   import { loadPlayerWaveform, prefetchPlayerAssets, PLAYER_BARS } from '$lib/player-assets.js';
-  import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata, hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
+  import { audioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata, hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
   import { playbackGainCurve, createPlaybackAudio } from '$lib/playback-audio.js';
   import { recordingComment } from '$lib/recording-comments.js';
   import { hitLoudnessFraction } from '$lib/report-barcode.js';
@@ -1012,7 +1012,7 @@
   const deltaDistribution = $derived(windowDeltaDistribution(
     trimHitMetadata($rawHitMetadataById.get(entry.id) ?? null, entry),
   ));
-  const analysisParameters = $derived(formatAudioPanelAnalysisParameters(hitMetadata));
+  const analysisParameters = $derived(audioPanelAnalysisParameters(hitMetadata));
   const audioSrc       = $derived(`${ASSET_BASE}/${entry.audioPath}`);
 </script>
 
@@ -1427,8 +1427,12 @@
       </div>
 
       
-      {#if editingAccess && analysisParameters}
-        <div class="analysis-parameters">{analysisParameters}</div>
+      {#if editingAccess && analysisParameters.length}
+        <div class="analysis-parameters">
+          {#each analysisParameters as parameter, i}
+            {#if i > 0}{' · '}{/if}<span title={parameter.title}>{parameter.text}</span>
+          {/each}
+        </div>
       {/if}
     </div>
   </div>
@@ -2235,6 +2239,7 @@
 
   .time-display {
     display: flex;
+    flex: 0 0 auto;
     gap: 0.25rem;
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
     color: #888;
@@ -2322,11 +2327,14 @@
 
   .line-under-waveform {
     display: flex;
-    justify-content:space-between;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    justify-content: space-between;
     align-items: end;
   }
   .analysis-parameters {
-    margin: 0 0 0;
+    flex: 1 1 max-content;
+    min-width: 0;
     color: #888;
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
     font-variant-numeric: tabular-nums;

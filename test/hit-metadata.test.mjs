@@ -125,6 +125,7 @@ test('audio panel shows readable analysis parameters in display order', () => {
   assert.equal(
     formatAudioPanelAnalysisParameters({
       analysisTrigger: 'automatic',
+      analyzedAt: '2026-11-26T15:13:00',
       analysisSettings: {
         classifier: {
           trained_at: trainedAt,
@@ -139,7 +140,7 @@ test('audio panel shows readable analysis parameters in display order', () => {
         },
       },
     }),
-    'Trigger: auto · Trained: 2026-11-23 · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s',
+    'AUTO · Analyzed: 2026-11-26 · Trained: 2026-11-23 · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s',
   );
 });
 
