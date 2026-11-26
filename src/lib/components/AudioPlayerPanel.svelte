@@ -2,7 +2,8 @@
   import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { onMount, tick } from 'svelte';
-  import { formatDuration, formatDate, downsampleWaveform, waveformNorm, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
+  import { formatDuration, formatDate, downsampleWaveform, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
+  import { loadPlayerWaveform, prefetchPlayerAssets, PLAYER_BARS } from '$lib/player-assets.js';
   import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata, hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
   import { playbackGainCurve, createPlaybackAudio } from '$lib/playback-audio.js';
   import { recordingComment } from '$lib/recording-comments.js';
@@ -22,6 +23,7 @@
   /**
    * @type {{
    *   entry: import('$lib/types').Entry;
+   *   nextEntry?: import('$lib/types').Entry | null;
    *   onclose: () => void;
    *   onclosed?: () => void;
    *   ondelete?: (entry: import('$lib/types').Entry) => void;
@@ -35,6 +37,7 @@
    */
   let {
     entry,
+    nextEntry = null,
     onclose,
     onclosed,
     ondelete,
@@ -111,11 +114,6 @@
   });
 
   // ── Waveform data ──────────────────────────────────────────────────────────
-  // Module-level cache shared with WaveformPreview (avoids second fetch when
-  // the user opens the panel for an already-previewed entry).
-  /** @type {Map<string, { data: number[], mins: number[], maxs: number[], norm: number, rawLength: number } | 'error'>} */
-  const waveformCache = new Map();
-
   /** @type {{ data: number[], mins: number[], maxs: number[], norm: number, rawLength: number } | null} */
   let waveData   = $state(null);
   let wfLoading  = $state(false);
@@ -129,9 +127,6 @@
   // Using a viewBox lets the SVG scale to any container width.
   const VW = 1000; // virtual width
   const VH = 80;   // virtual height
-
-  // Number of bars to render in the player waveform.
-  const PLAYER_BARS = 500;
 
   // ── Derived waveform bars ─────────────────────────────────────────────────
   const bars = $derived.by(() => {
@@ -232,36 +227,30 @@
   // ── Fetch waveform when entry changes ────────────────────────────────────
   $effect(() => {
     const path = entry.waveformPath;
-    if (!path) { waveData = null; return; }
-
-    const cached = waveformCache.get(path);
-    if (cached && cached !== 'error') {
-      waveData = cached;
-      return;
-    }
-    if (cached === 'error') return;
-
+    let cancelled = false;
+    waveData = null;
+    wfLoading = false;
+    if (!path) return;
     wfLoading = true;
-    fetch(`${ASSET_BASE}/${path}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+    loadPlayerWaveform(path)
+      .then((result) => {
+        if (!cancelled) waveData = result;
       })
-      .then((json) => {
-        const norm   = waveformNorm(json.bits ?? 8);
-        const ds     = downsampleWaveform(json.data, PLAYER_BARS);
-        const result = {
-          data: json.data,
-          mins: ds.mins,
-          maxs: ds.maxs,
-          norm,
-          rawLength: json.length,
-        };
-        waveformCache.set(path, result);
-        if (entry.waveformPath === path) waveData = result;
-      })
-      .catch(() => waveformCache.set(path, 'error'))
-      .finally(() => { wfLoading = false; });
+      .catch(() => {})
+      .finally(() => { if (!cancelled) wfLoading = false; });
+    return () => { cancelled = true; };
+  });
+
+  // Only speculate after the same recording has stayed open for ten seconds.
+  $effect(() => {
+    void entry.id;
+    const waveformPath = nextEntry?.waveformPath;
+    const audioPath = nextEntry?.audioPath;
+    if (!waveformPath && !audioPath) return;
+    const timer = setTimeout(() => {
+      void prefetchPlayerAssets({ waveformPath, audioPath });
+    }, 10_000);
+    return () => clearTimeout(timer);
   });
 
   // ── Reset player state when entry changes ────────────────────────────────

@@ -636,6 +636,7 @@
   <div class="audio-panel screen-only">
     <AudioPlayerPanel
       entry={panelEntry}
+      nextEntry={adjacentReportEntry(orderedReportEntries, panelEntry.id, 1)}
       onclose={closePanel}
       onclosed={handlePanelClosed}
       ondelete={deleteEntry}

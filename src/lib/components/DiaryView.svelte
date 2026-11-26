@@ -25,6 +25,7 @@
   import { withLinkedTrainingSample } from '$lib/diary-samples.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
   import { isEmbeddedLayout } from '$lib/embed.js';
+  import { adjacentReportEntry } from '$lib/report-navigation.js';
 
   // Svelte 5 runes
   let { data } = $props();
@@ -54,6 +55,7 @@
 
   const days = $derived(selectDiaryDays(filteredEntries));
   const visibleEntries = $derived(diaryEntriesForDays(days));
+  const orderedAudioEntries = $derived(visibleEntries.filter(entry => entry.kind === 'audio'));
   const sunByDate = $derived(data.sunByDate ?? {});
 
   /** @type {import('$lib/types').Entry | null} */
@@ -398,6 +400,7 @@
 {#if showPanel && panelEntry}
   <AudioPlayerPanel
     entry={panelEntry}
+    nextEntry={adjacentReportEntry(orderedAudioEntries, panelEntry.id, 1)}
     onclose={closePanel}
     onclosed={handlePanelClosed}
     ondelete={deleteEntry}
