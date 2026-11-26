@@ -316,18 +316,18 @@
   });
 
   // ── Audio adjustment ──────────────────────────────────────────────────────
-  let adjustAudioOpen = $state(false);
+  let adjustAudioEnabled = $state(false);
   let amplify = $state(false);
   let suppressLoud = $state(0);
   let suppressCutoff = $state(0);
   let audioAdjustmentError = $state('');
   /** @type {ReturnType<typeof createPlaybackAudio> | null} */
   let playbackAudio = null;
-  let _gainCurve = $derived(playbackGainCurve(waveData, {
+  let _gainCurve = $derived(adjustAudioEnabled ? playbackGainCurve(waveData, {
     amplify, suppressAmount: suppressLoud, suppressCutoff,
     startFraction: trimBounds.sourceDurationMs > 0 ? trimBounds.startMs / trimBounds.sourceDurationMs : 0,
     endFraction: trimBounds.sourceDurationMs > 0 ? trimBounds.stopMs / trimBounds.sourceDurationMs : 1,
-  }));
+  }) : null);
 
   async function preparePlaybackAudio() {
     if (!audioEl) return;
@@ -350,7 +350,7 @@
     const gain = _gainCurve?.[index] ?? 1;
     if (playbackAudio) {
       audioEl.volume = 1;
-      playbackAudio.update(gain, amplify);
+      playbackAudio.update(gain, adjustAudioEnabled && amplify);
     } else {
       // Basic playback still works if Web Audio is unavailable.
       audioEl.volume = Math.min(1, gain);
@@ -1485,9 +1485,9 @@
 
   <div class="audio-adjustments" role="group" aria-label="Adjust audio">
     <label class="adjustment-heading amplify-label">
-      <input type="checkbox" bind:checked={adjustAudioOpen} aria-controls="audio-adjustment-drawer" /> Adjust audio
+      <input type="checkbox" bind:checked={adjustAudioEnabled} aria-controls="audio-adjustment-drawer" /> Adjust audio
     </label>
-    {#if adjustAudioOpen}
+    {#if adjustAudioEnabled}
     <div class="adjustment-drawer" id="audio-adjustment-drawer">
     <label class="amplify-label">
       <input type="checkbox" bind:checked={amplify} /> Amplify
