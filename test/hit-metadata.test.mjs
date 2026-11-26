@@ -64,7 +64,7 @@ test('auto-detection label is rebuilt from current hit metadata', () => {
 
   assert.equal(
     formatAutoDetectionLabel('-A- C1 D6 W94 La11.0 Lm1.9', metadata, 10),
-    '-A- C0.98 D18 W3 La4.2 Lm2.6',
+    '-A- C0.98 D45% W3 La4.2 Lm2.6',
   );
 });
 
@@ -75,7 +75,7 @@ test('hit metadata stats can be formatted independently of the stored label', ()
       confidences: [0.91, 0.98, 0.94],
       loudnesses: [4.2, 1.4, 2.2],
     }, 10),
-    'C0.98 D18 W3 La4.2 Lm2.6',
+    'C0.98 D45% W3 La4.2 Lm2.6',
   );
 });
 
@@ -90,7 +90,7 @@ test('sample diary titles preserve SAMPLE and the comment before current stats',
       confidences: [0.91, 0.98, 0.94],
       loudnesses: [4.2, 1.4, 2.2],
     }),
-    'SAMPLE bark C0.98 D18 W3 La4.2 Lm2.6',
+    'SAMPLE bark C0.98 D45% W3 La4.2 Lm2.6',
   );
 });
 
@@ -105,7 +105,7 @@ test('audio panel title expands sample hit stats for display', () => {
       confidences: Array(9).fill(1),
       loudnesses: [2.1, 2.4, 2.8, 2.9, 3.0, 3.1, 3.2, 3.4, 3.6],
     }),
-    'SAMPLE bark: Barks: 9, Density: 18 bpm, Loudness Peak: 3.6x, Mean: 2.9x',
+    'SAMPLE bark: Barks: 9, Density: 45%, Loudness Peak: 3.6x, Mean: 2.9x',
   );
 });
 
@@ -116,7 +116,7 @@ test('audio panel stats can be shown without treating a filename descriptor as a
       confidences: [0.91, 0.99],
       loudnesses: [1.5, 2.5],
     }, 10),
-    'Barks: 2, Density: 12 bpm, Loudness Peak: 2.5x, Mean: 2.0x',
+    'Barks: 2, Density: 30%, Loudness Peak: 2.5x, Mean: 2.0x',
   );
 });
 
@@ -175,7 +175,7 @@ test('audio panel title expands auto-detected hit stats for display', () => {
       confidences: Array(67).fill(1),
       loudnesses: [...Array(66).fill(2.3), 5.3],
     }),
-    '-A-: Barks: 67, Density: 7 bpm, Loudness Peak: 5.3x, Mean: 2.3x',
+    '-A-: Barks: 67, Density: 18%, Loudness Peak: 5.3x, Mean: 2.3x',
   );
 });
 
@@ -197,7 +197,7 @@ test('diary titles retain their descriptor without metadata and refresh auto sta
       confidences: [1],
       loudnesses: [2],
     }),
-    '-A- C1 D6 W1 La2.0 Lm2.0',
+    '-A- C1 D15% W1 La2.0 Lm2.0',
   );
 });
 
@@ -208,7 +208,7 @@ test('auto-detection label handles maximum confidence, mean loudness, and no hit
       confidences: [0.91, 1, 0.95, 0.93],
       loudnesses: [4, 1, 3, 2],
     }, 12),
-    '-A- C1 D20 W4 La4.0 Lm2.5',
+    '-A- C1 D50% W4 La4.0 Lm2.5',
   );
   assert.equal(
     formatAutoDetectionLabel('-A- old values', {
@@ -216,7 +216,7 @@ test('auto-detection label handles maximum confidence, mean loudness, and no hit
       confidences: [],
       loudnesses: [],
     }, 12),
-    '-A- C0.00 D0 W0 La0.0 Lm0.0',
+    '-A- C0.00 D0% W0 La0.0 Lm0.0',
   );
 });
 
@@ -228,4 +228,17 @@ test('stored label remains the fallback for non-auto or unloaded metadata', () =
     confidences: [1],
     loudnesses: [2],
   }, 10), 'manual C1');
+});
+
+test('density is the percentage represented by 1.5-second windows', () => {
+  const metadata = { timestamps: Array.from({ length: 52 }, (_, index) => index * 1.5) };
+  assert.equal(
+    formatAudioPanelStats(metadata, 520),
+    'Barks: 52, Density: 15%, Loudness Peak: 0.0x, Mean: 0.0x',
+  );
+  assert.match(formatHitMetadataStats(metadata, 520), / D15% W52 /);
+  for (const duration of [0, -1, NaN, Infinity, undefined]) {
+    assert.match(formatAudioPanelStats(metadata, duration), /Density: 0%/);
+  }
+  assert.match(formatAudioPanelStats({ timestamps: [] }, 520), /Density: 0%/);
 });

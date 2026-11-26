@@ -65,7 +65,7 @@ test('operator metadata retains windows and filtering flags stay aligned after t
 test('waveform stats annotate filtered counts without counting them as barks', async () => {
   const { formatAudioPanelStats } = await import('../src/lib/hit-metadata.js');
   const retained = filterHitMetadata(metadata, filters);
-  assert.match(formatAudioPanelStats(retained, 10, 2), /^Barks: 2 \(2 filtered\), Density: 12 bpm/);
+  assert.match(formatAudioPanelStats(retained, 10, 2), /^Barks: 2 \(2 filtered\), Density: 30%/);
   assert.match(formatAudioPanelStats(retained, 10), /^Barks: 2, Density:/);
 });
 
@@ -133,4 +133,17 @@ test('both delta controls span -1 to 1 and support wholly positive or negative i
   assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: .25, filter_delta_max: .75 }), false);
   assert.equal(hitPassesFilters({ bark: .25, wind: .75 }, { filter_delta_min: -.75, filter_delta_max: -.25 }), true);
   assert.equal(hitPassesFilters({ bark: .75, wind: .25 }, { filter_delta_min: -.75, filter_delta_max: -.25 }), false);
+});
+
+test('percentage density uses only passed hits and the trimmed clip duration', async () => {
+  const { formatAudioPanelStats } = await import('../src/lib/hit-metadata.js');
+  const { trimHitMetadata } = await import('../src/lib/diary-trim.js');
+  const raw = {
+    timestamps: Array.from({ length: 60 }, (_, i) => 10 + i * 2),
+    multilabelScores: Array.from({ length: 60 }, (_, i) => ({ bark: i < 52 ? .9 : .1 })),
+  };
+  const retained = filterHitMetadata(raw, { filter_bark_min: .5 });
+  const visible = trimHitMetadata(retained, { durationSec: 600, trimStartMs: 10000, trimStopMs: 530000 });
+  assert.match(formatAudioPanelStats(visible, 520, 8), /^Barks: 52 \(8 filtered\), Density: 15%,/);
+  assert.equal(raw.timestamps.length, 60);
 });
