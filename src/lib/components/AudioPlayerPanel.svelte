@@ -3,9 +3,11 @@
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { onMount, tick } from 'svelte';
   import { formatDuration, formatDate, downsampleWaveform, waveformNorm, ASSET_BASE, PRIVATE_API_BASE } from '$lib/utils.js';
-  import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata } from '$lib/hit-metadata.js';
+  import { formatAudioPanelAnalysisParameters, formatAudioPanelStats, formatAudioPanelTitle, setHitMetadata, hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
+  import { playbackGainCurve, createPlaybackAudio } from '$lib/playback-audio.js';
   import { recordingComment } from '$lib/recording-comments.js';
   import { hitLoudnessFraction } from '$lib/report-barcode.js';
+  import { windowDeltaDistribution } from '$lib/window-delta-distribution.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
   import { probeEditingAccess } from '$lib/editing-access.js';
   import { hitMetadataFragmentRanges, taggedPlaybackStep, taggedRangeIndexAtOrAfter } from '$lib/tagged-fragment-playback.js';
@@ -93,6 +95,7 @@
     let id = 0;
     const tick = () => {
       currentTime = audioEl.currentTime;
+      applyAutoVolume();
       if (playbackMode === 'approver') {
         enforceApproverPlayback();
       } else if (currentTime >= trimBounds.stopSec - 0.01) {
@@ -312,85 +315,56 @@
     hoveredHitIndex = null;
   });
 
-  // ── Volume / gain ──────────────────────────────────────────────────────────
-  /** Manual volume in dB. Slider range -30..0. */
-  let volumeDb   = $state(0);
-  /** When true, per-moment waveform lookahead adjusts gain dynamically. */
-  let autoAdjust     = $state(false);
-  /** How aggressively to suppress loud sections. 0 = off, 1 = extreme. */
-  let suppressLoud   = $state(0);
-  /** Amplitude threshold (0..1): only samples above this are suppressed. */
+  // ── Audio adjustment ──────────────────────────────────────────────────────
+  let adjustAudioOpen = $state(false);
+  let amplify = $state(false);
+  let suppressLoud = $state(0);
   let suppressCutoff = $state(0);
-  /** How much to boost quiet sections toward volume 1. 0 = off, 1 = full makeup. */
-  let boostQuiet     = $state(0);
-  /** Amplitude threshold (0..1): only samples below this are boosted. */
-  let boostCutoff    = $state(1);
+  let audioAdjustmentError = $state('');
+  /** @type {ReturnType<typeof createPlaybackAudio> | null} */
+  let playbackAudio = null;
+  let _gainCurve = $derived(playbackGainCurve(waveData, {
+    amplify, suppressAmount: suppressLoud, suppressCutoff,
+    startFraction: trimBounds.sourceDurationMs > 0 ? trimBounds.startMs / trimBounds.sourceDurationMs : 0,
+    endFraction: trimBounds.sourceDurationMs > 0 ? trimBounds.stopMs / trimBounds.sourceDurationMs : 1,
+  }));
 
-  /** dB → linear gain (0..1). */
-  function dbToLinear(db) { return Math.pow(10, db / 20); }
-
-  /**
-   * Precomputed gain curve: one multiplier per waveform sample.
-   * Recomputed whenever waveData changes or autoAdjust is toggled.
-   * Reactive so bars() updates when the curve is computed.
-   */
-  let _gainCurve = /** @type {Float32Array | null} */ ($state(null));
-
-  // Keep audioEl.volume in sync with slider when auto-adjust is off.
-  $effect(() => {
-    if (audioEl && !autoAdjust) audioEl.volume = dbToLinear(volumeDb);
-  });
-
-  // Rebuild gain curve whenever any normalisation param changes.
-  $effect(() => {
-    if (!autoAdjust || !waveData) { _gainCurve = null; return; }
-    const { maxs, norm } = waveData;
-    const n = maxs.length;
-
-    // Phase 1 — suppress samples whose peak is above suppressCutoff.
-    const suppressTarget = Math.pow(0.0001, suppressLoud);
-    const curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const peak = maxs[i] / norm;  // 0..1
-      if (peak <= suppressCutoff || suppressLoud === 0) {
-        curve[i] = 1; // below cutoff or strength is off: no change
-      } else {
-        const fullSuppress = peak > 0 ? Math.min(1, suppressTarget / peak) : 1;
-        curve[i] = 1 + suppressLoud * (fullSuppress - 1);
-      }
+  async function preparePlaybackAudio() {
+    if (!audioEl) return;
+    try {
+      playbackAudio ??= createPlaybackAudio(audioEl);
+      applyAutoVolume();
+      await playbackAudio.resume();
+      audioAdjustmentError = '';
+    } catch (error) {
+      audioAdjustmentError = error.message;
     }
-
-    // Phase 2 — boost samples whose peak is below boostCutoff.
-    // For each eligible sample, compute the gain that would bring its amplitude
-    // up to boostCutoff (i.e. as loud as the quietest "not-quiet" sound).
-    // Blend toward that target by boostQuiet.  Capped at 1.0 (audioEl.volume max).
-    if (boostQuiet > 0) {
-      for (let i = 0; i < n; i++) {
-        const peak = maxs[i] / norm;
-        if (peak <= 0 || peak >= boostCutoff) continue;
-        const targetGain = Math.min(1, boostCutoff / peak);   // gain to reach the cutoff level
-        curve[i] = Math.min(1, curve[i] + boostQuiet * (targetGain - curve[i]));
-      }
-    }
-
-    _gainCurve = curve;
-  });
-
-  /** On each timeupdate, look up the precomputed gain for the current position. */
-  function applyAutoVolume() {
-    if (!audioEl || !_gainCurve) return;
-    const dur = audioEl.duration;
-    if (!dur) return;
-    const idx = Math.min(_gainCurve.length - 1,
-      Math.floor((audioEl.currentTime / dur) * _gainCurve.length));
-    audioEl.volume = Math.max(0, Math.min(1, dbToLinear(volumeDb) * _gainCurve[idx]));
   }
 
-  const volLabel        = $derived(volumeDb === 0 ? '0 dB' : `${volumeDb.toFixed(1)} dB`);
-  const suppressLabel   = $derived(suppressLoud   === 0 ? 'off' : `${Math.round(suppressLoud   * 100)}%`);
-  const boostLabel      = $derived(boostQuiet     === 0 ? 'off' : `${Math.round(boostQuiet     * 100)}%`);
-  const suppressCutLbl  = $derived(`>${Math.round(suppressCutoff * 100)}%`);
-  const boostCutLbl     = $derived(`<${Math.round(boostCutoff    * 100)}%`);
+  function applyAutoVolume() {
+    if (!audioEl) return;
+    const dur = audioEl.duration;
+    const index = dur > 0 && _gainCurve?.length
+      ? Math.max(0, Math.min(_gainCurve.length - 1, Math.floor(audioEl.currentTime / dur * _gainCurve.length)))
+      : 0;
+    const gain = _gainCurve?.[index] ?? 1;
+    if (playbackAudio) {
+      audioEl.volume = 1;
+      playbackAudio.update(gain, amplify);
+    } else {
+      // Basic playback still works if Web Audio is unavailable.
+      audioEl.volume = Math.min(1, gain);
+    }
+  }
+
+  $effect(() => {
+    void _gainCurve;
+    void amplify;
+    applyAutoVolume();
+  });
+
+  const suppressLabel = $derived(suppressLoud === 0 ? 'off' : `${Math.round(suppressLoud * 100)}%`);
+  const suppressCutLbl = $derived(`>${Math.round(suppressCutoff * 100)}%`);
   async function togglePlay() {
     if (!audioEl) return;
     if (isPlaying) {
@@ -401,6 +375,7 @@
         audioEl.currentTime = trimBounds.startSec;
         currentTime = trimBounds.startSec;
       }
+      await preparePlaybackAudio();
       audioEl.play().catch(() => {}); // ignore AbortError on rapid toggling
     }
   }
@@ -441,7 +416,10 @@
       audioEl.currentTime = range.startSec;
       currentTime = range.startSec;
     }
-    if (!isPlaying) await audioEl.play().catch(() => {});
+    if (!isPlaying) {
+      await preparePlaybackAudio();
+      await audioEl.play().catch(() => {});
+    }
   }
 
   // Pause playback when close is triggered so audio doesn't continue in the background.
@@ -1026,6 +1004,8 @@
     return () => {
       disposed = true;
       document.removeEventListener('keydown', handleGlobalKeydown);
+      audioEl?.pause();
+      playbackAudio?.dispose();
       if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
   });
@@ -1037,6 +1017,9 @@
   const displayEntry = $derived({ ...entry, durationSec: visibleDuration });
   const displayLabel   = $derived(formatAudioPanelTitle(displayEntry, visibleHitMetadata));
   const analysisSummary = $derived(formatAudioPanelStats(visibleHitMetadata, visibleDuration, editingAccess ? filteredHitCount : null));
+  const deltaDistribution = $derived(windowDeltaDistribution(
+    trimHitMetadata($rawHitMetadataById.get(entry.id) ?? null, entry),
+  ));
   const analysisParameters = $derived(formatAudioPanelAnalysisParameters(hitMetadata));
   const audioSrc       = $derived(`${ASSET_BASE}/${entry.audioPath}`);
 </script>
@@ -1191,7 +1174,20 @@
   {/if}
 
   {#if analysisSummary}
-    <p class="panel-analysis">{analysisSummary}</p>
+    <p class="panel-analysis">
+      <span>{analysisSummary}{#if editingAccess},{/if}</span>
+      {#if editingAccess}
+      <span class="delta-distribution" title={deltaDistribution.title}>
+        <span>Labeling Δ</span>
+        {#if deltaDistribution.count}
+          <span class="delta-chart" role="img" aria-label="Delta histogram: {deltaDistribution.count} windows, negatives combined in the first bar, then 0 to 1 in steps of 0.1">{deltaDistribution.chart}</span>
+        {:else}
+          <span aria-label="Delta histogram unavailable">—</span>
+        {/if}
+        <span aria-label="Delta standard deviation">σ {deltaDistribution.standardDeviation === null ? '—' : deltaDistribution.standardDeviation.toFixed(3)}</span>
+      </span>
+      {/if}
+    </p>
   {/if}
 
   {#if editingAccess && entry.waveformPath}
@@ -1483,48 +1479,37 @@
     {/if}
   </div>
 
-  <!-- ── Volume control ── -->
-  <div class="volume-row">
-    <label class="vol-label" for="vol-slider">{volLabel}</label>
-    <input
-      id="vol-slider"
-      class="vol-slider"
-      type="range"
-      min="-30"
-      max="0"
-      step="0.5"
-      bind:value={volumeDb}
-      aria-label="Volume"
-    />
-    <label class="auto-label">
-      <input type="checkbox" bind:checked={autoAdjust} />
-      auto
+  <div class="audio-adjustments" role="group" aria-label="Adjust audio">
+    <label class="adjustment-heading amplify-label">
+      <input type="checkbox" bind:checked={adjustAudioOpen} aria-controls="audio-adjustment-drawer" /> Adjust audio
     </label>
-    {#if autoAdjust}
-      <div class="norm-rows">
-        <div class="norm-row">
-          <span class="norm-label">suppress {suppressLabel}</span>
-          <input class="norm-slider" type="range" min="0" max="1" step="0.01"
-            bind:value={suppressLoud} aria-label="Suppress amount" />
-          <span class="norm-label cutoff-lbl">{suppressCutLbl}</span>
-          <input class="norm-slider cutoff-slider" type="range" min="0" max="1" step="0.01"
-            bind:value={suppressCutoff} aria-label="Suppress cutoff" />
-        </div>
-        <div class="norm-row">
-          <span class="norm-label">boost {boostLabel}</span>
-          <input class="norm-slider" type="range" min="0" max="1" step="0.01"
-            bind:value={boostQuiet} aria-label="Boost amount" />
-          <span class="norm-label cutoff-lbl">{boostCutLbl}</span>
-          <input class="norm-slider cutoff-slider" type="range" min="0" max="1" step="0.01"
-            bind:value={boostCutoff} aria-label="Boost cutoff" />
-        </div>
-      </div>
+    {#if adjustAudioOpen}
+    <div class="adjustment-drawer" id="audio-adjustment-drawer">
+    <label class="amplify-label">
+      <input type="checkbox" bind:checked={amplify} /> Amplify
+    </label>
+    <div class="suppress-controls">
+    <span>Suppress loud parts:</span>
+    <label class="adjustment-slider">
+      <span>Amount {suppressLabel}</span>
+      <input type="range" min="0" max="1" step="0.01"
+        bind:value={suppressLoud} aria-label="Suppress amount" />
+    </label>
+    <label class="adjustment-slider">
+      <span>Cutoff {suppressCutLbl}</span>
+      <input type="range" min="0" max="1" step="0.01"
+        bind:value={suppressCutoff} aria-label="Suppress cutoff" />
+    </label>
+    </div>
+    </div>
     {/if}
   </div>
+  {#if audioAdjustmentError}<p class="comment-error" role="alert">{audioAdjustmentError}</p>{/if}
 
   <!-- Native audio element (hidden, drives playback) -->
   <audio
     bind:this={audioEl}
+    crossorigin="anonymous"
     src={audioSrc}
     preload="metadata"
     onplay={handlePlay}
@@ -1759,6 +1744,25 @@
     margin: -0.45rem 0 0;
     color: #888;
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.25rem;
+  }
+  .delta-distribution {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+  .delta-chart {
+    text-decoration: underline;
+    font-family: var(--font-data);
+    font-variation-settings: 'wdth' 15;
+    font-size: var(--font-size-small);
+    font-weight: 400;
+    line-height: 1;
+    color: #4a7cdc;
   }
   .comment-error {
     margin: -0.4rem 0 0;
@@ -2294,78 +2298,40 @@
   .approver-play-btn.active { border-color: #666; color: #333; opacity: 1; }
   .approver-play-btn:disabled { cursor: default; opacity: 0.25; }
 
-  /* ── Volume row ── */
-  .volume-row {
+  .audio-adjustments {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.6rem;
-  }
-
-  .vol-label {
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny);
-    font-variant-numeric: tabular-nums;
+    gap: 0.6rem 1.125rem;
+    font-family: var(--font-tiny);
+    font-size: var(--font-size-tiny);
     color: #555;
-    min-width: 5.5ch;
-    text-align: right;
-    flex-shrink: 0;
   }
-
-  .vol-slider {
-    flex: 1;
-    accent-color: #1a1a1a;
-    cursor: pointer;
-    height: 4px;
-  }
-
-  .auto-label {
+  .adjustment-heading { font-weight: 700; }
+  .adjustment-drawer {
     display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1.125rem;
+  }
+  .suppress-controls {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem 0.375rem;
+  }
+  .amplify-label, .adjustment-slider {
+    display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny);
-    color: #555;
-    cursor: pointer;
-    flex-shrink: 0;
-    user-select: none;
   }
-  .auto-label input { cursor: pointer; accent-color: #1a1a1a; }
-
-  .norm-label {
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny);
-    font-variant-numeric: tabular-nums;
-    color: #555;
-    min-width: 7.5ch;
-    text-align: right;
-    flex-shrink: 0;
-  }
-
-  .norm-label.cutoff-lbl {
-    min-width: 4ch;
-    margin-left: 0.4rem;
-  }
-
-  .norm-slider {
-    flex: 2;
-    accent-color: #1a1a1a;
-    cursor: pointer;
-    height: 4px;
-  }
-
-  .norm-slider.cutoff-slider {
-    flex: 1;
-  }
-
-  .norm-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    flex: 1;
-  }
-
-  .norm-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
+  .amplify-label { cursor: pointer; white-space: nowrap; }
+  .amplify-label input, .adjustment-slider input { accent-color: #1a1a1a; cursor: pointer; }
+  .adjustment-slider { flex: 1 1 10rem; gap: 0.15rem; font-variant-numeric: tabular-nums; }
+  .adjustment-slider span { white-space: nowrap; }
+  .adjustment-slider input { min-width: 3rem; width: 100%; height: 16px; }
 
   .line-under-waveform {
     display: flex;
