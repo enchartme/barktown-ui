@@ -47,7 +47,6 @@
   let interactionError = $state('');
   /** @type {any | null} */
   let hovered = $state(null);
-  let projection = $state('umap');
   let shortWindowsOnly = $state(false);
   let tooltipX = $state(0);
   let tooltipY = $state(0);
@@ -101,7 +100,6 @@
     const hoverId = hovered?.embeddingId;
     const filterLabel = activeLabel;
     const filterSampleId = activeSampleId;
-    const selectedProjection = projection;
     const encoding = colorEncoding;
     const colorDomain = numericColorDomain;
     const focusShortWindows = shortWindowsOnly;
@@ -110,7 +108,6 @@
       void hoverId;
       void filterLabel;
       void filterSampleId;
-      void selectedProjection;
       void encoding;
       void colorDomain;
       void focusShortWindows;
@@ -201,13 +198,6 @@
     return Math.max(0.02, opacity);
   }
 
-  function selectProjection(nextProjection) {
-    if (projection === nextProjection) return;
-    hovered = null;
-    stopPreview();
-    projection = nextProjection;
-  }
-
   function draw() {
     if (!canvas || !plotWrap || !points.length) return;
     const rect = plotWrap.getBoundingClientRect();
@@ -225,8 +215,8 @@
     ctx.clearRect(0, 0, plotWidth, plotHeight);
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const xField = projection === 'pca' ? 'pcaX' : 'umapX';
-    const yField = projection === 'pca' ? 'pcaY' : 'umapY';
+    const xField = 'umapX';
+    const yField = 'umapY';
     for (const point of points) {
       if (point[xField] < minX) minX = point[xField];
       if (point[xField] > maxX) maxX = point[xField];
@@ -388,14 +378,10 @@
   });
 </script>
 
-<section class="projection" aria-label={`${projection.toUpperCase()} embedding projection`}>
+<section class="projection" aria-label="UMAP embedding projection">
   <div class="projection-heading">
     <div class="projection-copy">
-      <div class="projection-switch" role="group" aria-label="Projection">
-        <button class:active={projection === 'pca'} aria-pressed={projection === 'pca'} onclick={() => selectProjection('pca')}>PCA</button>
-        <button class:active={projection === 'umap'} aria-pressed={projection === 'umap'} onclick={() => selectProjection('umap')}>UMAP</button>
-      </div>
-      <p>projection of the training data. Each dot is one window of audio (explanation below). Hover a dot to hear the sound; click to open the recorded sample.</p>
+      <p>UMAP projection of the training data. Each dot is one window of audio (explanation below). Hover a dot to hear the sound; click to open the recorded sample.</p>
     </div>
     {#if points.length}<span class="point-count">{points.length.toLocaleString()} windows</span>{/if}
   </div>
@@ -413,7 +399,7 @@
         onpointerleave={handlePointerLeave}
         onclick={handleClick}
         role="img"
-        aria-label={`${projection.toUpperCase()} scatterplot with ${points.length} embedding windows, coloured by ${selectedEncodingLabel.toLowerCase()}`}
+        aria-label={`UMAP scatterplot with ${points.length} embedding windows, coloured by ${selectedEncodingLabel.toLowerCase()}`}
       ></canvas>
       <div class="plot-controls-overlay">
         <label class="duration-control">
@@ -461,28 +447,6 @@
   }
   .projection-heading p { margin: 0; color: #777; font-family: var(--font-tiny); font-size: var(--font-size-tiny); line-height: 1.45; }
   .projection-copy { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
-  .projection-switch {
-    display: inline-flex;
-    flex-shrink: 0;
-    padding: 2px;
-    border: 1px solid #d0d0ca;
-    border-radius: 5px;
-    background: #efefeb;
-  }
-  .projection-switch button {
-    padding: 0.18rem 0.42rem;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: #777;
-    font: inherit;
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny);
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .projection-switch button:hover { color: #222; }
-  .projection-switch button.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-  .projection-switch button:focus-visible { outline: 2px solid rgba(74, 124, 220, 0.35); outline-offset: 1px; }
   .point-count { color: #999; font-family: var(--font-tiny); font-size: var(--font-size-tiny); white-space: nowrap; padding-top: 0.15rem; }
   .plot-controls-overlay {
     position: absolute;

@@ -46,7 +46,7 @@ export const TRAINING_COLOR_GUIDES = Object.freeze({
     column: 'nearest_distance',
     title: 'Nearest distance',
     plain: 'How different this sound is from that most similar sound.',
-    detailed: 'The cosine distance to nearest_embedding_id in PCA space. Values closer to zero represent more similar embeddings, while larger values represent less similar embeddings; negative numerical noise is not expected but tiny floating-point effects should not be overinterpreted.',
+    detailed: 'The cosine distance to the nearest embedding from another recording session in PCA space. Values closer to zero represent more similar embeddings, while larger values represent less similar embeddings; negative numerical noise is not expected but tiny floating-point effects should not be overinterpreted.',
   }),
   suspicionScore: Object.freeze({
     column: 'suspicion_score',

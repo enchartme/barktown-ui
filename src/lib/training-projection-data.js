@@ -69,6 +69,22 @@ function optionalNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+/** Decode exact millisecond annotation bounds and window position from the ID. */
+function windowIdentity(embeddingId) {
+  const match = /^[^/]+\/(.+):(\d+)$/.exec(embeddingId ?? '');
+  if (!match) return null;
+  const stem = match[1];
+  const bounds = /^(.*)_(\d+)-(\d+)$/.exec(stem);
+  return {
+    // A stable fragment grouping key; playback uses the exact parent audio path.
+    sourceFragment: `${embeddingId.slice(0, embeddingId.lastIndexOf(':'))}.wav`,
+    originalRecording: bounds ? bounds[1] : stem,
+    annotationStart: bounds ? Number(bounds[2]) / 1000 : null,
+    annotationEnd: bounds ? Number(bounds[3]) / 1000 : null,
+    windowIndex: Number(match[2]),
+  };
+}
+
 export async function loadTrainingProjectionPoints() {
   if (cachedPoints) return cachedPoints;
   if (pointsRequest) return pointsRequest;
@@ -83,11 +99,10 @@ export async function loadTrainingProjectionPoints() {
       const headers = parseCsvLine(lines.shift() ?? '');
       const column = Object.fromEntries(headers.map((name, index) => [name, index]));
       const required = [
-        'embedding_id', 'source_fragment', 'original_30s_recording',
-        'original_recording_audio', 'window_start_s', 'window_end_s',
-        'recording_window_start_s', 'recording_window_end_s', 'label',
-        'pca_x', 'pca_y', 'umap_x', 'umap_y',
+        'embedding_id', 'original_recording_audio', 'label', 'umap_x', 'umap_y',
       ];
+      // Accept the previous export during UI/data rollout as well.
+      if (column.window_duration_s == null) required.push('window_start_s', 'window_end_s');
       const missing = required.filter((name) => column[name] == null);
       if (missing.length) throw new Error(`Missing CSV column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
 
@@ -95,31 +110,37 @@ export async function loadTrainingProjectionPoints() {
       for (const line of lines) {
         if (!line) continue;
         const row = parseCsvLine(line);
-        const pcaX = Number(row[column.pca_x]);
-        const pcaY = Number(row[column.pca_y]);
-        const umapX = Number(row[column.umap_x]);
-        const umapY = Number(row[column.umap_y]);
-        const windowStart = optionalNumber(row[column.window_start_s]);
-        const windowEnd = optionalNumber(row[column.window_end_s]);
-        if (![pcaX, pcaY, umapX, umapY].every(Number.isFinite)) continue;
+        const umapX = optionalNumber(row[column.umap_x]);
+        const umapY = optionalNumber(row[column.umap_y]);
+        if (![umapX, umapY].every(Number.isFinite)) continue;
+        const identity = windowIdentity(row[column.embedding_id]);
+        if (!identity && column.source_fragment == null) throw new Error('Invalid embedding_id in projection CSV.');
+        const windowIndex = identity?.windowIndex ?? optionalNumber(row[column.window_index]);
+        const windowStart = windowIndex != null ? windowIndex * 0.48 : optionalNumber(row[column.window_start_s]);
+        const windowDuration = column.window_duration_s != null
+          ? optionalNumber(row[column.window_duration_s])
+          : Math.max(0, Number(row[column.window_end_s]) - Number(row[column.window_start_s]));
+        const fragmentPadding = optionalNumber(row[column.fragment_padding_s]) ?? 0.15;
+        const annotationStart = identity?.annotationStart ?? optionalNumber(row[column.annotation_start_s]);
+        const recordingStart = identity
+          ? Math.max(0, (annotationStart ?? 0) - fragmentPadding) + windowStart
+          : optionalNumber(row[column.recording_window_start_s]);
         points.push({
           embeddingId: row[column.embedding_id],
-          sourceFragment: row[column.source_fragment],
-          originalRecording: row[column.original_30s_recording],
+          sourceFragment: identity?.sourceFragment ?? row[column.source_fragment],
+          originalRecording: identity?.originalRecording ?? row[column.original_30s_recording],
           originalAudio: row[column.original_recording_audio],
           annotationId: optionalNumber(row[column.annotation_id]),
-          annotationWindowReview: row[column.annotation_window_review] || '',
-          fragmentPadding: optionalNumber(row[column.fragment_padding_s]) ?? 0.15,
-          windowIndex: optionalNumber(row[column.window_index]),
+          fragmentPadding,
+          windowIndex,
           windowStart,
-          windowEnd,
-          windowDuration: Number.isFinite(windowStart) && Number.isFinite(windowEnd)
-            ? Math.max(0, windowEnd - windowStart)
-            : null,
-          recordingStart: optionalNumber(row[column.recording_window_start_s]),
-          recordingEnd: optionalNumber(row[column.recording_window_end_s]),
-          annotationStart: optionalNumber(row[column.annotation_start_s]),
-          annotationEnd: optionalNumber(row[column.annotation_end_s]),
+          windowEnd: windowStart + windowDuration,
+          windowDuration,
+          recordingStart,
+          recordingEnd: Number.isFinite(recordingStart) && Number.isFinite(windowDuration)
+            ? recordingStart + windowDuration : null,
+          annotationStart,
+          annotationEnd: identity?.annotationEnd ?? optionalNumber(row[column.annotation_end_s]),
           label: row[column.label],
           trainOrValidation: row[column.train_or_validation],
           classifierScore: optionalNumber(row[column.classifier_score]),
@@ -131,13 +152,11 @@ export async function loadTrainingProjectionPoints() {
           nearestDistance: optionalNumber(row[column.nearest_distance]),
           suspicionScore: optionalNumber(row[column.suspicion_score]),
           suspicionRank: optionalNumber(row[column.suspicion_rank]),
-          pcaX,
-          pcaY,
           umapX,
           umapY,
         });
       }
-      if (!points.length) throw new Error('The CSV contains no plottable PCA/UMAP coordinates.');
+      if (!points.length) throw new Error('The CSV contains no plottable UMAP coordinates.');
       cachedPoints = points;
       return points;
     })
