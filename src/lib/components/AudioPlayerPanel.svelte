@@ -1184,7 +1184,8 @@
         {:else}
           <span aria-label="Delta histogram unavailable">—</span>
         {/if}
-        <span aria-label="Delta standard deviation">σ {deltaDistribution.standardDeviation === null ? '—' : deltaDistribution.standardDeviation.toFixed(3)}</span>
+        <span aria-label="Delta mean">μ {deltaDistribution.mean === null ? '—' : deltaDistribution.mean.toFixed(2)}</span>
+        <span aria-label="Delta standard deviation">σ {deltaDistribution.standardDeviation === null ? '—' : deltaDistribution.standardDeviation.toFixed(2)}</span>
       </span>
       {/if}
     </p>

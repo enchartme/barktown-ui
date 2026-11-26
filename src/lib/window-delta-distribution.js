@@ -31,9 +31,9 @@ export function windowDeltaDistribution(metadata) {
     'Window delta = max(bark, yap) − max(other labels).',
     `${count} windows with scores in the visible recording range, including filtered windows.`,
     'Histogram: all negative deltas in the first bar, then 0 to 1 in 0.1-wide bins; bar height shows relative frequency.',
-    standardDeviation === null ? 'σ unavailable: no windows with both score groups.' : `Population standard deviation σ = ${standardDeviation.toFixed(3)}.`,
+    count ? `Mean μ = ${mean.toFixed(2)}; population standard deviation σ = ${standardDeviation.toFixed(2)}.` : 'μ and σ unavailable: no windows with both score groups.',
     ...bins.map((value, i) => `${i === 0 ? '< 0' : `${((i - 1) * BIN_WIDTH).toFixed(1)} to ${(i * BIN_WIDTH).toFixed(1)}`}: ${value}`),
   ].join('\n');
 
-  return { bins, count, standardDeviation, chart: `{b:${heights.join(',')}}`, title };
+  return { bins, count, mean: count ? mean : null, standardDeviation, chart: `{b:${heights.join(',')}}`, title };
 }

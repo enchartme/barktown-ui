@@ -15,6 +15,7 @@ test('histogram bundles negatives before ten fixed 0..1 bins and includes both e
   assert.equal(result.bins[1], 1);
   assert.equal(result.bins[10], 1);
   assert.equal(result.count, 3);
+  assert.equal(result.mean, 0);
   assert.ok(Math.abs(result.standardDeviation - Math.sqrt(2 / 3)) < 1e-12);
 });
 
@@ -22,6 +23,7 @@ test('population sigma is zero for single or identical deltas', () => {
   for (const scores of [[{ bark: .75, wind: .25 }], [{ bark: .75, wind: .25 }, { yap: .75, homestead: .25 }]]) {
     const result = windowDeltaDistribution(metadata(scores));
     assert.equal(result.standardDeviation, 0);
+    assert.equal(result.mean, 0.5);
     assert.equal(result.bins[6], scores.length);
   }
 });
@@ -31,6 +33,7 @@ test('missing diagnostics are excluded rather than counted as zero delta', () =>
     const result = windowDeltaDistribution(input);
     assert.equal(result.count, 0);
     assert.equal(result.standardDeviation, null);
+    assert.equal(result.mean, null);
     assert.ok(result.bins.every(value => value === 0));
   }
   const result = windowDeltaDistribution(metadata([{ bark: .75, yap: .25, wind: .5, traffic: .25 }, { bark: .25 }]));
