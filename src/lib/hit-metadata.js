@@ -22,7 +22,6 @@ import { PUBLIC_API_BASE } from './utils.js';
 export const hitMetadataById = writable(/** @type {Map<string, HitMetadata>} */ (new Map()));
 
 const AUTO_DETECTED_LABEL = /^-A-(?:\s|$)/;
-const BARK_WINDOW_SECONDS = 1.5;
 
 /** @param {HitMetadata} metadata @param {number} durationSec */
 function hitMetadataStats(metadata, durationSec) {
@@ -40,8 +39,13 @@ function hitMetadataStats(metadata, durationSec) {
     ? loudnesses.reduce((sum, loudness) => sum + loudness, 0) / loudnesses.length
     : 0;
   // D is the rounded percentage of clip time represented by passed bark windows.
+  // The API exposes hit_metadata.window_s as windowS. Match the server's
+  // legacy default only when a valid window duration is unavailable.
+  const windowS = Number.isFinite(metadata.windowS) && metadata.windowS > 0
+    ? metadata.windowS
+    : 1.5;
   const density = Number.isFinite(durationSec) && durationSec > 0
-    ? Math.round((hitCount * BARK_WINDOW_SECONDS / durationSec) * 100)
+    ? Math.round((hitCount * windowS / durationSec) * 100)
     : 0;
 
   return { hitCount, maximumConfidence, maximumLoudness, meanLoudness, density };

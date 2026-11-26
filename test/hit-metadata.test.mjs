@@ -59,12 +59,12 @@ test('auto-detection label is rebuilt from current hit metadata', () => {
     timestamps: [1, 3, 5],
     confidences: [0.91, 0.98, 0.94],
     loudnesses: [4.2, 1.4, 2.2],
-    windowS: 9,
+    windowS: 2,
   };
 
   assert.equal(
     formatAutoDetectionLabel('-A- C1 D6 W94 La11.0 Lm1.9', metadata, 10),
-    '-A- C0.98 D45% W3 La4.2 Lm2.6',
+    '-A- C0.98 D60% W3 La4.2 Lm2.6',
   );
 });
 
@@ -230,13 +230,13 @@ test('stored label remains the fallback for non-auto or unloaded metadata', () =
   }, 10), 'manual C1');
 });
 
-test('density is the percentage represented by 1.5-second windows', () => {
-  const metadata = { timestamps: Array.from({ length: 52 }, (_, index) => index * 1.5) };
+test('density uses the recorded window duration', () => {
+  const metadata = { timestamps: Array.from({ length: 52 }, (_, index) => index * 2), windowS: 2 };
   assert.equal(
     formatAudioPanelStats(metadata, 520),
-    'Barks: 52, Density: 15%, Loudness Peak: 0.0x, Mean: 0.0x',
+    'Barks: 52, Density: 20%, Loudness Peak: 0.0x, Mean: 0.0x',
   );
-  assert.match(formatHitMetadataStats(metadata, 520), / D15% W52 /);
+  assert.match(formatHitMetadataStats(metadata, 520), / D20% W52 /);
   for (const duration of [0, -1, NaN, Infinity, undefined]) {
     assert.match(formatAudioPanelStats(metadata, duration), /Density: 0%/);
   }

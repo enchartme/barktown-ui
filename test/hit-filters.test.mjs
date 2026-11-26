@@ -141,9 +141,10 @@ test('percentage density uses only passed hits and the trimmed clip duration', a
   const raw = {
     timestamps: Array.from({ length: 60 }, (_, i) => 10 + i * 2),
     multilabelScores: Array.from({ length: 60 }, (_, i) => ({ bark: i < 52 ? .9 : .1 })),
+    windowS: 2,
   };
   const retained = filterHitMetadata(raw, { filter_bark_min: .5 });
   const visible = trimHitMetadata(retained, { durationSec: 600, trimStartMs: 10000, trimStopMs: 530000 });
-  assert.match(formatAudioPanelStats(visible, 520, 8), /^Barks: 52 \(8 filtered\), Density: 15%,/);
+  assert.match(formatAudioPanelStats(visible, 520, 8), /^Barks: 52 \(8 filtered\), Density: 20%,/);
   assert.equal(raw.timestamps.length, 60);
 });
