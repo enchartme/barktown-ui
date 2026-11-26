@@ -512,9 +512,11 @@
   const reanalyzeBlockedReason = $derived(
     $reanalysis.active || reanalyzeLoading ? 'Re-analysis is already in progress. Wait for it to finish.'
     : !$reanalysis.available ? 'The private re-analysis API is unavailable. Check your Tailnet connection.'
-    : !entry.reanalyzable ? 'Source WAV is not available for re-analysis.'
+    : !entry.reanalyzable ? 'Source recording is not available for re-analysis.'
     : '',
   );
+  const historicalJob = $derived($reanalysis.kind === 'historical' && $reanalysis.recordId === entry.id ? $reanalysis : null);
+  const historicalError = $derived(historicalJob?.errors?.[0]?.error ?? '');
 
   $effect(() => {
     void entry.id;
@@ -798,6 +800,7 @@
       );
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      if (res.status === 202) return; // The shared progress poll refreshes the new event entries.
       setHitMetadata(entry.id, data);
       const savedTrim = {
         trimStartMs: data?.trimStartMs ?? null,
@@ -1092,7 +1095,9 @@
           onclick={handleReanalyzeClick}
           disabled={!$reanalysis.available || $reanalysis.active || reanalyzeLoading || !entry.reanalyzable}
           aria-label="Re-analyze recording"
-          title={reanalyzeBlockedReason || 'Re-run deterministic bark-window classification against the source WAV'}
+          title={reanalyzeBlockedReason || (entry.reanalysisMode === 'historical'
+            ? 'Archive the original and replay through Goblin to create event clips'
+            : 'Re-run deterministic bark-window classification against the source WAV')}
         >{reanalyzeLoading ? '⏳' : '🔁'}</button>
         </span>
       {/if}
@@ -1164,6 +1169,12 @@
     <p class="panel-comment-readonly">{visibleComment}</p>
   {/if}
 
+  {#if historicalJob?.active}
+    <p class="panel-analysis" role="status">Historical import: {historicalJob.stage ?? 'starting'}{historicalJob.eventTotal ? ` (${historicalJob.eventsCompleted ?? 0}/${historicalJob.eventTotal})` : ''}…</p>
+  {:else if historicalJob?.message}
+    <p class="panel-analysis" role="status">{historicalJob.message}</p>
+  {/if}
+
   {#if analysisSummary}
     <p class="panel-analysis">
       <span>{analysisSummary}{#if editingAccess},{/if}</span>
@@ -1192,8 +1203,8 @@
     <p class="comment-error" role="alert">{commentError}</p>
   {/if}
 
-  {#if reanalyzeError}
-    <p class="reanalyze-error">{reanalyzeError}</p>
+  {#if reanalyzeError || historicalError}
+    <p class="reanalyze-error">{reanalyzeError || historicalError}</p>
   {/if}
 
   {#if movingLabel && !samplePickerOpen}

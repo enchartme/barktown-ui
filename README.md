@@ -14,6 +14,16 @@ Public reads must never depend on Tailnet reachability. For now the UI still
 renders its operator controls; using those controls continues to require being
 connected to the Tailnet.
 
+Historical timestamped `.aac`/`.m4a` diary entries can use **Re-analyze** without
+an archived WAV. The server preserves the original in the historical archive and
+replays it through Goblin's live event assembly, creating individual tagged MP3
+clips. Their local timestamps come from the source filename plus each clip's
+elapsed offset, including pre-event padding. The player displays background job
+stages and errors; diary/report entries refresh after publication. If no events
+are confirmed, the original stays available for review. Deploy the Goblin analyzer
+and server updates before this UI. Existing Goblin clips retain ordinary window
+reclassification.
+
 ---
 
 ## Purpose

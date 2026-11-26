@@ -5,7 +5,7 @@
   const blockedReason = $derived(
     $reanalysis.active ? 'Re-analysis is already in progress. Wait for it to finish.'
     : !$reanalysis.available ? 'The private re-analysis API is unavailable. Check your Tailnet connection.'
-    : disabled ? 'No recordings in this day have an available source WAV for re-analysis.'
+    : disabled ? 'No recordings in this day have an available source recording for re-analysis.'
     : '',
   );
   let error = $state('');

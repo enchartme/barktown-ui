@@ -440,7 +440,11 @@
           if (!disposed && requestId === reportRequestId) {
             entries = nextEntries;
             periodSummary = nextSummary;
-            if (panelEntry) panelEntry = entries.find(e => e.id === panelEntry.id) ?? panelEntry;
+            if (panelEntry) {
+              const updated = entries.find(e => e.id === panelEntry.id);
+              if (updated) panelEntry = updated;
+              else showPanel = false;
+            }
           }
         } while (again && !disposed);
       } catch (error) { console.error('Could not refresh re-analysis results:', error); }

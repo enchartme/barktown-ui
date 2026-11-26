@@ -292,17 +292,23 @@
   onMount(() => {
     let disposed = false;
     let sequence = 0;
-    async function update() {
+    async function update(event) {
       const request = ++sequence;
       const viewMode = showAllDays;
       const dates = entries.map(e => e.date).sort();
+      dates.push(...(event?.detail?.replacementDates ?? []));
+      dates.sort();
       if (!dates.length) return;
       const bounds = { startDate: dates[0], endDate: dates.at(-1) };
       try {
         const [nextEntries] = await Promise.all([fetchDiary(bounds), loadHitMetadata(bounds)]);
         if (!disposed && request === sequence && viewMode === showAllDays) {
           entries = nextEntries;
-          if (panelEntry) panelEntry = entries.find(e => e.id === panelEntry.id) ?? panelEntry;
+          if (panelEntry) {
+            const updated = entries.find(e => e.id === panelEntry.id);
+            if (updated) panelEntry = updated;
+            else showPanel = false;
+          }
         }
       } catch (error) { console.error('Could not refresh re-analysis results:', error); }
     }
