@@ -78,7 +78,7 @@
     if (!reportStartDate || !reportEndDate) return [];
 
     let grouped = groupByDateRange(
-      entries.filter((entry) => entry.kind === 'audio'),
+      entries,
       reportStartDate,
       reportEndDate,
     );
@@ -89,14 +89,15 @@
         ? day.entries
         : [...day.entries].reverse();
       const serverSummary = summaryByDate.get(day.date);
-      const filteredBarks = day.entries.reduce(
+      const audioEntries = day.entries.filter((entry) => entry.kind === 'audio');
+      const filteredBarks = audioEntries.reduce(
         (sum, entry) => sum + hiddenHitCount(entry, $rawHitMetadataById.get(entry.id), $hitFilters), 0,
       );
       return {
         ...day,
         entries: orderedEntries,
         summary: {
-          disturbances: serverSummary?.records ?? 0,
+          disturbances: (serverSummary?.records ?? 0) + day.entries.length - audioEntries.length,
           totalDurationSec: serverSummary?.disturbedTimeSec ?? 0,
           barks: Math.max(0, (serverSummary?.barks ?? 0) - filteredBarks),
           filteredBarks,
@@ -105,12 +106,14 @@
     });
   });
   const reportTotals = $derived({
-    disturbances: periodSummary.totals.records,
+    disturbances: days.reduce((sum, day) => sum + day.summary.disturbances, 0),
     totalDurationSec: periodSummary.totals.disturbedTimeSec,
     barks: Math.max(0, periodSummary.totals.barks - days.reduce((sum, day) => sum + day.summary.filteredBarks, 0)),
     filteredBarks: days.reduce((sum, day) => sum + day.summary.filteredBarks, 0),
   });
-  const orderedReportEntries = $derived(days.flatMap((day) => day.entries));
+  const orderedAudioEntries = $derived(
+    days.flatMap((day) => day.entries).filter((entry) => entry.kind === 'audio'),
+  );
 
   function todayInStockholm() {
     return new Intl.DateTimeFormat('sv-SE', {
@@ -277,7 +280,7 @@
    */
   function selectAdjacentEntry(direction) {
     if (!panelEntry) return;
-    const adjacent = adjacentReportEntry(orderedReportEntries, panelEntry.id, direction);
+    const adjacent = adjacentReportEntry(orderedAudioEntries, panelEntry.id, direction);
     if (adjacent) selectEntry(adjacent);
   }
 
@@ -457,7 +460,7 @@
 
 <svelte:head>
   <title>{printMode ? 'Barktown disturbance report' : 'Report · Barktown'}</title>
-  <meta name="description" content="Read Barktown recordings as flowing text." />
+  <meta name="description" content="Read Barktown recordings and text notes in time order." />
 </svelte:head>
 
 <div class="app" class:print-layout={printMode} style={`--diary-night: ${DIARY_NIGHT_COLOR}`}>
@@ -520,7 +523,7 @@
         </select>
       </label>
       <label>
-        Recordings
+        Entries
         <select value={recordingOrder} onchange={changeRecordingOrder}>
           <option value="asc">Earliest on top</option>
           <option value="desc">Latest on top</option>
@@ -529,7 +532,7 @@
     </div>{/if}
 
     {#if loading}
-      <p class="status">Loading recordings…</p>
+      <p class="status">Loading report…</p>
     {:else if loadError}
       <p class="status error">Could not load diary data: {loadError}</p>
     {:else}
@@ -537,8 +540,8 @@
         <h1>Barktown disturbance report</h1>
         <p class="print-range">{printRangeLabel}</p>
         <p>
-          This report shows {countLabel(reportTotals.disturbances, 'disturbance')} recorded at
-          {data.recordingContext.album} {data.recordingContext.location} with microphone direction
+          This report shows {countLabel(reportTotals.disturbances, 'disturbance')} from recordings
+          and text notes at {data.recordingContext.album} {data.recordingContext.location} with microphone direction
           {data.recordingContext.direction}.
         </p>
         <p>
@@ -575,7 +578,7 @@
                 {countLabel(day.summary.barks, 'bark')}{#if operatorAccess} ({day.summary.filteredBarks.toLocaleString()} filtered){/if}
                 {#if operatorAccess}<span class="day-action screen-only">
                   <ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} />
-                  <AutoApproveDayButton date={day.date} disabled={!day.entries.some(e => !e.approved)} />
+                  <AutoApproveDayButton date={day.date} disabled={!day.entries.some(e => e.kind === 'audio' && !e.approved)} />
                 </span>{/if}
               </small>
             </h2>
@@ -587,31 +590,42 @@
                   {@const needsPeriod = reportSentenceNeedsPeriod(noteLabels)}
                   <span
                     class="recording-sentence"
+                    class:text-note={entry.kind !== 'audio'}
                     class:nighttime={isNighttimeRecording(entry.time, sunByDate[day.date])}
-                    class:pending-approval={operatorAccess && !entry.approved}
+                    class:pending-approval={operatorAccess && entry.kind === 'audio' && !entry.approved}
                   >
                     <span class="recording-lead">
-                      <button
-                        class="play-button"
-                        onclick={() => selectEntry(entry)}
-                        aria-label={`Play recording from ${formatDate(entry.date)} at ${entry.time}`}
-                        title="Open recording"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                          <circle cx="8" cy="8" r="7.5" />
-                          <polygon points="6,4.5 12,8 6,11.5" />
-                        </svg>
-                      </button>
-                      <time datetime={entry.datetimeLocal}>{entry.time}</time>
-                      {#if $reanalysis.currentIds.includes(entry.id)}
-                        <span role="status">Processing…</span>
+                      {#if entry.kind === 'audio'}
+                        <button
+                          class="play-button"
+                          onclick={() => selectEntry(entry)}
+                          aria-label={`Play recording from ${formatDate(entry.date)} at ${entry.time}`}
+                          title="Open recording"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                            <circle cx="8" cy="8" r="7.5" />
+                            <polygon points="6,4.5 12,8 6,11.5" />
+                          </svg>
+                        </button>
                       {:else}
-                      <ReportBarcode
-                        durationSec={entry.durationSec}
-                        trimStartMs={entry.trimStartMs}
-                        trimStopMs={entry.trimStopMs}
-                        metadata={(operatorAccess ? $markedHitMetadataById : $hitMetadataById).get(entry.id) ?? null}
-                      />
+                        <span class="note-marker" role="img" aria-label="Text note" title="Text note">
+                          <svg width="10" height="10" viewBox="0 0 528.899 528.899" fill="#fff" aria-hidden="true">
+                            <path d="M328.883,89.125l107.59,107.589l-272.34,272.34L56.604,361.465L328.883,89.125z M518.113,63.177l-47.981-47.981c-18.543-18.543-48.653-18.543-67.259,0l-45.961,45.961l107.59,107.59l53.611-53.611C532.495,100.753,532.495,77.559,518.113,63.177z M0.3,512.69c-1.958,8.812,5.998,16.708,14.811,14.565l119.891-29.069L27.473,390.597L0.3,512.69z" />
+                          </svg>
+                        </span>
+                      {/if}
+                      <time datetime={entry.datetimeLocal}>{entry.time}</time>
+                      {#if entry.kind === 'audio'}
+                        {#if $reanalysis.currentIds.includes(entry.id)}
+                          <span role="status">Processing…</span>
+                        {:else}
+                          <ReportBarcode
+                            durationSec={entry.durationSec}
+                            trimStartMs={entry.trimStartMs}
+                            trimStopMs={entry.trimStopMs}
+                            metadata={(operatorAccess ? $markedHitMetadataById : $hitMetadataById).get(entry.id) ?? null}
+                          />
+                        {/if}
                       {/if}
                       {#if noteLabels.length === 0 && needsPeriod}
                         <span class="period" aria-hidden="true">.</span>
@@ -624,7 +638,7 @@
                 {/each}
               </p>
             {:else}
-              <p class="no-recordings">No recordings.</p>
+              <p class="no-recordings">No recordings or text notes.</p>
             {/if}
           </section>
         {/each}
@@ -640,7 +654,7 @@
   <div class="audio-panel screen-only">
     <AudioPlayerPanel
       entry={panelEntry}
-      nextEntry={adjacentReportEntry(orderedReportEntries, panelEntry.id, 1)}
+      nextEntry={adjacentReportEntry(orderedAudioEntries, panelEntry.id, 1)}
       onclose={closePanel}
       onclosed={handlePanelClosed}
       ondelete={deleteEntry}
@@ -1013,6 +1027,20 @@
   }
 
   .annotation-label { margin-left: 0.25rem; }
+  .text-note time { margin-inline-end: 0; }
+  .text-note .annotation-label { margin-left: 0; }
+  .note-marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    margin-right: 0.2rem;
+    border-radius: 2px;
+    background: #5d514c;
+    line-height: 1;
+  }
   .period { margin-left: 0.18rem; }
   .no-recordings { color: #aaa; font-style: italic; }
 
