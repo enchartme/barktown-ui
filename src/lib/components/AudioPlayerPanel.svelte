@@ -1042,7 +1042,6 @@
     <div class="panel-meta">
       <span class="panel-kind panel-kind--{entry.kind}">{entry.kind}</span>
       <span class="panel-datetime">{entry.date} · {entry.time}</span>
-      <span class="panel-dur">{formattedDur}</span>
     </div>
     {#if editingAccess && deleteConfirm}
       <span class="delete-confirm">
@@ -1666,11 +1665,6 @@
   .panel-datetime {
     font-family: var(--font-tiny); font-size: var(--font-size-tiny);
     color: #666;
-  }
-
-  .panel-dur {
-    font-family: var(--font-tiny); font-size: var(--font-size-tiny);
-    color: #999;
   }
 
   .panel-comment {

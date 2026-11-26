@@ -140,7 +140,7 @@ export function formatAudioPanelStats(metadata, durationSec, filteredCount = nul
 
 /**
  * Format the small, stable subset of analysis provenance shown in the audio
- * panel. Values are kept verbatim so the line can be used for diagnostics.
+ * panel, with compact trigger and training-date labels.
  *
  * @param {HitMetadata | null | undefined} metadata
  */
@@ -151,9 +151,9 @@ export function formatAudioPanelAnalysisParameters(metadata) {
   const classifier = settings.classifier;
   const monitor = settings.monitor;
   const parameters = [
-    ['Trigger', metadata.analysisTrigger],
+    ['Trigger', metadata.analysisTrigger === 'automatic' ? 'auto' : metadata.analysisTrigger],
     ['Analyzed', formatLocalAnalysisTimestamp(metadata.analyzedAt)],
-    ['Trained', formatLocalAnalysisTimestamp(classifier?.trained_at)],
+    ['Trained', formatLocalAnalysisDate(classifier?.trained_at)],
     ['Threshold', monitor?.candidate_threshold],
     ['Refractory', formatSeconds(monitor?.hit_refractory_s)],
     ['Window', formatSeconds(monitor?.inference_window_s)],
@@ -169,6 +169,13 @@ export function formatAudioPanelAnalysisParameters(metadata) {
 
 function formatSeconds(value) {
   return value === null || value === undefined || value === '' ? value : `${value}s`;
+}
+
+function formatLocalAnalysisDate(value) {
+  if (value === null || value === undefined || value === '') return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
 function formatLocalAnalysisTimestamp(value) {

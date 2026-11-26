@@ -121,17 +121,10 @@ test('audio panel stats can be shown without treating a filename descriptor as a
 });
 
 test('audio panel shows readable analysis parameters in display order', () => {
-  const trainedAt = '2026-08-17T08:54:17Z';
-  const localTrainedAt = new Date(trainedAt).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const trainedAt = '2026-11-23T00:41:00';
   assert.equal(
     formatAudioPanelAnalysisParameters({
-      analysisTrigger: 'manual',
+      analysisTrigger: 'automatic',
       analysisSettings: {
         classifier: {
           trained_at: trainedAt,
@@ -146,7 +139,7 @@ test('audio panel shows readable analysis parameters in display order', () => {
         },
       },
     }),
-    `Trigger: manual · Trained: ${localTrainedAt} · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s`,
+    'Trigger: auto · Trained: 2026-11-23 · Threshold: 0.92 · Refractory: 1.5s · Window: 1.5s · Step: 0.25s',
   );
 });
 
