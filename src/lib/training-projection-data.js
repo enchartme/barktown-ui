@@ -1,6 +1,4 @@
-import { ASSET_BASE } from '$lib/utils.js';
-
-const CSV_PATH = 'training-set-projection.csv';
+import { ASSET_BASE, PUBLIC_API_BASE } from '$lib/utils.js';
 
 /** @type {any[] | null} */
 let cachedPoints = null;
@@ -89,7 +87,7 @@ export async function loadTrainingProjectionPoints() {
   if (cachedPoints) return cachedPoints;
   if (pointsRequest) return pointsRequest;
 
-  pointsRequest = fetch(`${ASSET_BASE}/${CSV_PATH}`)
+  pointsRequest = fetch(`${PUBLIC_API_BASE}/api/training/projection.csv`)
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.text();

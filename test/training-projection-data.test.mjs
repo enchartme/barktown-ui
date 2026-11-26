@@ -5,12 +5,16 @@ import { deriveWindowReviewCandidates } from '../src/lib/training-window-review.
 
 // Load the module without SvelteKit's build-time $lib alias.
 const source = (await readFile(new URL('../src/lib/training-projection-data.js', import.meta.url), 'utf8'))
-  .replace("import { ASSET_BASE } from '$lib/utils.js';", "const ASSET_BASE = 'https://assets.example';");
+  .replace("import { ASSET_BASE, PUBLIC_API_BASE } from '$lib/utils.js';",
+    "const ASSET_BASE = 'https://assets.example'; const PUBLIC_API_BASE = 'https://api.example';");
 let moduleId = 0;
 async function load(csv) {
   const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${moduleId++}`);
   const previous = globalThis.fetch;
-  globalThis.fetch = async () => ({ ok: true, text: async () => csv });
+  globalThis.fetch = async (url) => {
+    assert.equal(url, 'https://api.example/api/training/projection.csv');
+    return { ok: true, text: async () => csv };
+  };
   try {
     return await module.loadTrainingProjectionPoints();
   } finally {
