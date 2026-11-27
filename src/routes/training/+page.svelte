@@ -1744,6 +1744,9 @@
         <button class="filter-pill reload-pill" onclick={reloadSidebar} title="Reload">
           {samplesLoading ? '…' : '↺'}
         </button>
+        <span class="sample-count" aria-live="polite" aria-label={filterLabel === 'all' ? `${samples.length} samples` : `${filteredSamples.length} of ${samples.length} samples`}>
+          {filterLabel === 'all' ? samples.length : `${filteredSamples.length}/${samples.length}`}
+        </span>
         </div>
 
         {#if samplesError}
@@ -2837,6 +2840,13 @@
   .filter-pill:hover { background: #eaeae6; color: #333; }
   .filter-pill.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
   .reload-pill { border-style: dashed; }
+  .sample-count {
+    align-self: center;
+    font-family: var(--font-monospace);
+    font-size: var(--font-size-tiny);
+    color: #666;
+    white-space: nowrap;
+  }
 
   .samples-msg { padding: 1rem 0.9rem; font-family: var(--font-tiny); font-size: var(--font-size-tiny); color: #999; }
   .samples-err { color: #c0392b; }
