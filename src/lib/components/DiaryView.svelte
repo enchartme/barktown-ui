@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
@@ -330,7 +331,7 @@
       onclick={() => (showOverview = !showOverview)}
       aria-pressed={showOverview}
       title="Toggle overview chart"
-    >{#if loading}Loading…{:else if loadError}Error{:else}{visibleEntries.length} recorded events{/if}</button>
+    >{#if loading}Loading…{:else if loadError}Error{:else}{formatNumber(visibleEntries.length)} recorded events{/if}</button>
 
     <div class="kind-controls" role="group" aria-label="Entry type filter">
       {#each ['text', 'audio', 'both'] as k (k)}

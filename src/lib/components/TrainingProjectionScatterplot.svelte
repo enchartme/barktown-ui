@@ -30,6 +30,7 @@
 </script>
 
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { onMount } from 'svelte';
   import { sampleLabelColor } from '$lib/sample-labels.js';
 
@@ -265,7 +266,7 @@
   }
 
   function metric(value, digits = 3) {
-    return Number.isFinite(value) ? value.toFixed(digits) : '—';
+    return Number.isFinite(value) ? formatNumber(value, digits) : '—';
   }
 
   function percentage(value) {
@@ -383,7 +384,7 @@
     <div class="projection-copy">
       <p>UMAP projection of the training data. Each dot is one window of audio (explanation below). Hover a dot to hear the sound; click to open the recorded sample.</p>
     </div>
-    {#if points.length}<span class="point-count">{points.length.toLocaleString()} windows</span>{/if}
+    {#if points.length}<span class="point-count">{formatNumber(points.length)} windows</span>{/if}
   </div>
 
   {#if loading}
@@ -399,7 +400,7 @@
         onpointerleave={handlePointerLeave}
         onclick={handleClick}
         role="img"
-        aria-label={`UMAP scatterplot with ${points.length} embedding windows, coloured by ${selectedEncodingLabel.toLowerCase()}`}
+        aria-label={`UMAP scatterplot with ${formatNumber(points.length)} embedding windows, coloured by ${selectedEncodingLabel.toLowerCase()}`}
       ></canvas>
       <div class="plot-controls-overlay">
         <label class="duration-control">

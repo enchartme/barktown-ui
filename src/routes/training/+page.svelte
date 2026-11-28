@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { page } from '$app/state';
@@ -170,9 +171,9 @@
 
   function formatColorScaleEnd(value) {
     if (!Number.isFinite(value)) return '—';
-    if (Number.isInteger(value) && Math.abs(value) >= 10) return value.toLocaleString();
-    if (Math.abs(value) >= 100) return Math.round(value).toLocaleString();
-    return Number(value.toPrecision(3)).toString();
+    if (Number.isInteger(value) && Math.abs(value) >= 10) return formatNumber(value);
+    if (Math.abs(value) >= 100) return formatNumber(Math.round(value));
+    return formatNumber(Number(value.toPrecision(3)));
   }
 
   function formatColorScaleStart(value) {
@@ -209,8 +210,8 @@
     const bins = fragmentDurationBinsByLabel.get(lbl) ?? new Array(DURATION_BIN_COUNT + 1).fill(0);
     return bins
       .map((count, i) => {
-        const label = i < DURATION_BIN_COUNT ? `${(i * DURATION_BIN_SIZE).toFixed(1)}-${((i + 1) * DURATION_BIN_SIZE).toFixed(1)}s` : '>5s';
-        return `${label}: ${count}`;
+        const label = i < DURATION_BIN_COUNT ? `${formatNumber(i * DURATION_BIN_SIZE, 1)}-${formatNumber((i + 1) * DURATION_BIN_SIZE, 1)}s` : '>5s';
+        return `${label}: ${formatNumber(count)}`;
       })
       .join('\n');
   }
@@ -224,7 +225,7 @@
   function windowDurationTitle(lbl) {
     const bins = windowDurationBinsByLabel.get(lbl) ?? new Array(11).fill(0);
     return bins
-      .map((count, i) => `${i < 10 ? `${i * 100}-${(i + 1) * 100}ms` : '>1000ms'}: ${count}`)
+      .map((count, i) => `${i < 10 ? `${formatNumber(i * 100)}-${formatNumber((i + 1) * 100)}ms` : `>${formatNumber(1000)}ms`}: ${formatNumber(count)}`)
       .join('\n');
   }
 
@@ -329,7 +330,7 @@
   const jankyProfile  = $derived(jankyPlaybackProfile(jankyLevel, jankyUnitSec));
   const jankyTitle    = $derived(jankyLevel === 0
     ? 'Smooth playback'
-    : `Play ${jankyProfile.playSec.toFixed(2)} s and skip ${jankyProfile.skipSec.toFixed(2)} s of every ${jankyProfile.unitSec.toFixed(1)} s`);
+    : `Play ${formatNumber(jankyProfile.playSec, 2)} s and skip ${formatNumber(jankyProfile.skipSec, 2)} s of every ${formatNumber(jankyProfile.unitSec, 1)} s`);
 
   // rAF-based playhead: sample audioEl.currentTime at ~60 fps while playing so
   // the playhead moves smoothly. ontimeupdate stays as a seek fallback.
@@ -1744,8 +1745,8 @@
         <button class="filter-pill reload-pill" onclick={reloadSidebar} title="Reload">
           {samplesLoading ? '…' : '↺'}
         </button>
-        <span class="sample-count" aria-live="polite" aria-label={filterLabel === 'all' ? `${samples.length} samples` : `${filteredSamples.length} of ${samples.length} samples`}>
-          {filterLabel === 'all' ? samples.length : `${filteredSamples.length}/${samples.length}`}
+        <span class="sample-count" aria-live="polite" aria-label={filterLabel === 'all' ? `${formatNumber(samples.length)} samples` : `${formatNumber(filteredSamples.length)} of ${formatNumber(samples.length)} samples`}>
+          {filterLabel === 'all' ? formatNumber(samples.length) : `${formatNumber(filteredSamples.length)}/${formatNumber(samples.length)}`}
         </span>
         </div>
 
@@ -1868,12 +1869,12 @@
                     title={`Focus ${lbl}; click to ${pinnedCorpusLabel === lbl ? 'clear' : 'keep'} focus`}
                   >
                     <td><span class="sample-label-pill" style:background={sampleLabelColor(lbl)}>{lbl}</span></td>
-                    <td>{sampleCountsByLabel.get(lbl) ?? 0}</td>
-                    <td>{fragCount}</td>
+                    <td>{formatNumber(sampleCountsByLabel.get(lbl) ?? 0)}</td>
+                    <td>{formatNumber(fragCount)}</td>
                     <td class="corpus-chart-cell" title={fragmentDurationTitle(lbl)}>
                       <span class="chart">{fragmentDurationChart(lbl)}</span>
                     </td>
-                    <td>{windowCountsByLabel.get(lbl)?.toLocaleString() ?? '—'}</td>
+                    <td>{windowCountsByLabel.has(lbl) ? formatNumber(windowCountsByLabel.get(lbl)) : '—'}</td>
                     <td class="corpus-chart-cell" title={windowDurationTitle(lbl)}>
                       <span class="chart window-chart">{windowDurationChart(lbl)}</span>
                     </td>
@@ -1966,7 +1967,7 @@
           <div class="confirm-bar reanalyze-confirm-bar">
             <span>Replace every bark, review, and yap fragment using the current detector settings?</span>
             <label class="reanalyze-threshold">
-              <span>Threshold override: {reanalyzeThreshold.toFixed(2)}</span>
+              <span>Threshold override: {formatNumber(reanalyzeThreshold, 2)}</span>
               <input
                 type="range"
                 min="0.8"
@@ -2177,7 +2178,7 @@
                 {@const leftPct = (secToX(ann.startSec) / VW) * 100}
                 <div class="fragment-label-html" style="left: {leftPct}%">
                   <span class="fragment-label-text">{ann.label}</span>
-                  <span class="fragment-label-text fragment-dur">{(ann.endSec - ann.startSec).toFixed(1)}s</span>
+                  <span class="fragment-label-text fragment-dur">{formatNumber(ann.endSec - ann.startSec, 1)}s</span>
                 </div>
               {/if}
             {/each}
@@ -2326,7 +2327,7 @@
         <div id="window-review-sidebar-content" class="window-review-content">
           <div class="window-review-heading">
             <strong>Window review</strong>
-            <span>{visibleWindowReviewCandidates.length}</span>
+            <span>{formatNumber(visibleWindowReviewCandidates.length)}</span>
           </div>
           <div class="window-review-tabs" role="tablist" aria-label="Window review queues">
           {#each WINDOW_REVIEW_TABS as tab}
@@ -2336,7 +2337,7 @@
               aria-selected={windowReviewTab === tab.id}
               class:active={windowReviewTab === tab.id}
               onclick={() => selectWindowReviewTab(tab.id)}
-            >{tab.label}<small>{windowReviewQueues[tab.id]?.length ?? 0}</small></button>
+            >{tab.label}<small>{formatNumber(windowReviewQueues[tab.id]?.length ?? 0)}</small></button>
           {/each}
           </div>
 
@@ -2361,7 +2362,7 @@
                 title={applied
                   ? 'Applied; adjust the fragment or select another review item to dismiss'
                   : reviewAction?.label ?? `${candidate.reviewKind} review`}
-                aria-label={`${applied ? 'Applied, ' : ''}${reviewAction?.label ?? candidate.reviewKind}, ${candidate.windows.length} windows`}
+                aria-label={`${applied ? 'Applied, ' : ''}${reviewAction?.label ?? candidate.reviewKind}, ${formatNumber(candidate.windows.length)} windows`}
               >
                 <span class="window-review-icon" aria-hidden="true">{reviewIcon}</span>
                 <span class="window-review-details">

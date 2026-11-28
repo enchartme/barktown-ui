@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { barcodePresentationLines, barcodeWidth, hitLoudnessColor, filteredHitColor } from '$lib/report-barcode.js';
   import { formatDuration } from '$lib/utils.js';
   import { diaryTrimBounds, trimHitMetadata } from '$lib/diary-trim.js';
@@ -41,7 +42,7 @@
 <span
   class="barcode-figure"
   role="img"
-  aria-label={`${hitCount} detected ${hitCount === 1 ? 'bark' : 'barks'}${filteredCount ? ` (${filteredCount} filtered)` : ''} over ${formatDuration(trimBounds.durationSec)}`}
+  aria-label={`${formatNumber(hitCount)} detected ${hitCount === 1 ? 'bark' : 'barks'}${filteredCount ? ` (${formatNumber(filteredCount)} filtered)` : ''} over ${formatDuration(trimBounds.durationSec)}`}
 >
   <canvas
     bind:this={canvas}

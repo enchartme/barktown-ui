@@ -1,3 +1,4 @@
+import { formatNumber } from './number-format.js';
 import { aggregateHitScores } from './hit-filters.js';
 
 const BIN_COUNT = 11;
@@ -29,10 +30,10 @@ export function windowDeltaDistribution(metadata) {
   const heights = bins.map(value => maximum ? Math.round(value / maximum * 100) : 0);
   const title = [
     'Window delta = max(bark, yap) − max(other labels).',
-    `${count} windows with scores in the visible recording range, including filtered windows.`,
+    `${formatNumber(count)} windows with scores in the visible recording range, including filtered windows.`,
     'Histogram: all negative deltas in the first bar, then 0 to 1 in 0.1-wide bins; bar height shows relative frequency.',
-    count ? `Mean μ = ${mean.toFixed(2)}; population standard deviation σ = ${standardDeviation.toFixed(2)}.` : 'μ and σ unavailable: no windows with both score groups.',
-    ...bins.map((value, i) => `${i === 0 ? '< 0' : `${((i - 1) * BIN_WIDTH).toFixed(1)} to ${(i * BIN_WIDTH).toFixed(1)}`}: ${value}`),
+    count ? `Mean μ = ${formatNumber(mean, 2)}; population standard deviation σ = ${formatNumber(standardDeviation, 2)}.` : 'μ and σ unavailable: no windows with both score groups.',
+    ...bins.map((value, i) => `${i === 0 ? '< 0' : `${((i - 1) * BIN_WIDTH).toFixed(1)} to ${(i * BIN_WIDTH).toFixed(1)}`}: ${formatNumber(value)}`),
   ].join('\n');
 
   return { bins, count, mean: count ? mean : null, standardDeviation, chart: `{b:${heights.join(',')}}`, title };

@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { hitMetadataById as rawHitMetadataById } from '$lib/hit-metadata.js';
   import { hitFilters } from '$lib/settings.js';
   import { hiddenHitCount } from '$lib/hit-filters.js';
@@ -379,7 +380,7 @@
   }
 
   function countLabel(count, singular, plural = `${singular}s`) {
-    return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+    return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
   }
 
   onMount(async () => {
@@ -554,7 +555,7 @@
       <section class="report-totals" aria-label={`${rangeWeeks}-week report totals`}>
         <div class="total-metric">
           <span>Disturbances</span>
-          <strong>{reportTotals.disturbances.toLocaleString()}</strong>
+          <strong>{formatNumber(reportTotals.disturbances)}</strong>
         </div>
         <div class="total-metric">
           <span>Time disturbed</span>
@@ -562,7 +563,7 @@
         </div>
         <div class="total-metric">
           <span>Barks</span>
-          <strong>{reportTotals.barks.toLocaleString()}{#if operatorAccess} <small>({reportTotals.filteredBarks.toLocaleString()} filtered)</small>{/if}</strong>
+          <strong>{formatNumber(reportTotals.barks)}{#if operatorAccess}{' '}<small>({formatNumber(reportTotals.filteredBarks)} filtered)</small>{/if}</strong>
         </div>
       </section>
       <div class="report-days">
@@ -575,7 +576,7 @@
                 <span aria-hidden="true">·</span>
                 {formatDisturbedTime(day.summary.totalDurationSec)} disturbed
                 <span aria-hidden="true">·</span>
-                {countLabel(day.summary.barks, 'bark')}{#if operatorAccess} ({day.summary.filteredBarks.toLocaleString()} filtered){/if}
+                {countLabel(day.summary.barks, 'bark')}{#if operatorAccess} ({formatNumber(day.summary.filteredBarks)} filtered){/if}
                 {#if operatorAccess}<span class="day-action screen-only">
                   <ReanalyzeDayButton date={day.date} disabled={!day.entries.some(e => e.reanalyzable)} />
                   <AutoApproveDayButton date={day.date} disabled={!day.entries.some(e => e.kind === 'audio' && !e.approved)} />

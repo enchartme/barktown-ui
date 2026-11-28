@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import FilterSettings from '$lib/components/FilterSettings.svelte';
   import { onMount } from 'svelte';
   import GoblinPiStatus from '$lib/components/GoblinPiStatus.svelte';
@@ -74,7 +75,7 @@
   }
 
   function cleanRateLabel() {
-    return summary.cleanRate == null ? '—' : `${(summary.cleanRate * 100).toFixed(1)}%`;
+    return summary.cleanRate == null ? '—' : `${formatNumber(summary.cleanRate * 100, 1)}%`;
   }
 
   function formatTimestamp(value) {
@@ -89,17 +90,17 @@
 
   function formatDuration(seconds) {
     if (!Number.isFinite(seconds)) return '—';
-    if (seconds < 60) return `${seconds.toFixed(1)} s`;
-    return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+    if (seconds < 60) return `${formatNumber(seconds, 1)} s`;
+    return `${formatNumber(Math.floor(seconds / 60))}m ${Math.round(seconds % 60)}s`;
   }
 
   function reasonLabel(row) {
     const labels = [];
-    if (row.inputOverflowCount) labels.push(`${row.inputOverflowCount} input overflow`);
-    if (row.inputUnderflowCount) labels.push(`${row.inputUnderflowCount} input underflow`);
-    if (row.outputOverflowCount) labels.push(`${row.outputOverflowCount} output overflow`);
-    if (row.outputUnderflowCount) labels.push(`${row.outputUnderflowCount} output underflow`);
-    if (row.otherXrunCount) labels.push(`${row.otherXrunCount} other`);
+    if (row.inputOverflowCount) labels.push(`${formatNumber(row.inputOverflowCount)} input overflow`);
+    if (row.inputUnderflowCount) labels.push(`${formatNumber(row.inputUnderflowCount)} input underflow`);
+    if (row.outputOverflowCount) labels.push(`${formatNumber(row.outputOverflowCount)} output overflow`);
+    if (row.outputUnderflowCount) labels.push(`${formatNumber(row.outputUnderflowCount)} output underflow`);
+    if (row.otherXrunCount) labels.push(`${formatNumber(row.otherXrunCount)} other`);
     return labels.join(' · ') || 'No XRUNs';
   }
 
@@ -170,21 +171,21 @@
         <article>
           <span>Clean recordings</span>
           <strong>{cleanRateLabel()}</strong>
-          <small>{summary.clean.toLocaleString()} of {summary.recordings.toLocaleString()}</small>
+          <small>{formatNumber(summary.clean)} of {formatNumber(summary.recordings)}</small>
         </article>
         <article class:warn={summary.affected > 0}>
           <span>Affected recordings</span>
-          <strong>{summary.affected.toLocaleString()}</strong>
-          <small>{summary.recordings ? ((summary.affected / summary.recordings) * 100).toFixed(1) : 0}% of recordings</small>
+          <strong>{formatNumber(summary.affected)}</strong>
+          <small>{summary.recordings ? formatNumber((summary.affected / summary.recordings) * 100, 1) : 0}% of recordings</small>
         </article>
         <article class:warn={summary.totalXruns > 0}>
           <span>XRUN incidents</span>
-          <strong>{summary.totalXruns.toLocaleString()}</strong>
+          <strong>{formatNumber(summary.totalXruns)}</strong>
           <small>inside recording windows</small>
         </article>
         <article>
           <span>Recordings measured</span>
-          <strong>{summary.recordings.toLocaleString()}</strong>
+          <strong>{formatNumber(summary.recordings)}</strong>
           <small>{rangeDays == null ? 'all available records' : `last ${rangeDays} days`}</small>
         </article>
       </section>
@@ -206,7 +207,7 @@
                 {@const cleanHeight = day.clean * scale}
                 {@const affectedHeight = day.affected * scale}
                 <g>
-                  <title>{day.date}: {day.clean} clean, {day.affected} affected, {day.xruns} XRUNs</title>
+                  <title>{day.date}: {formatNumber(day.clean)} clean, {formatNumber(day.affected)} affected, {formatNumber(day.xruns)} XRUNs</title>
                   <rect x={x} y={218 - cleanHeight} width={width} height={cleanHeight} class="bar-clean" />
                   <rect x={x} y={218 - cleanHeight - affectedHeight} width={width} height={affectedHeight} class="bar-affected" />
                 </g>
@@ -227,7 +228,7 @@
           <div class="reason-list">
             {#each reasons as reason}
               <div class="reason-row">
-                <div><span>{reason.label}</span><strong>{reason.count.toLocaleString()}</strong></div>
+                <div><span>{reason.label}</span><strong>{formatNumber(reason.count)}</strong></div>
                 <div class="reason-track"><span style={`width: ${(reason.count / maxReasonCount) * 100}%`}></span></div>
               </div>
             {/each}
@@ -265,7 +266,7 @@
                           <summary>Event details</summary>
                           <ol>
                             {#each row.errors as error}
-                              <li><strong>+{(error.offset_ms / 1000).toFixed(3)}s</strong> {error.reasons.join(', ')}{error.detail ? ` — ${error.detail}` : ''}</li>
+                              <li><strong>+{formatNumber(error.offset_ms / 1000, 3)}s</strong> {error.reasons.join(', ')}{error.detail ? ` — ${error.detail}` : ''}</li>
                             {/each}
                           </ol>
                           {#if row.errorsTruncated}<p>{row.errorsTruncated} additional events omitted.</p>{/if}
@@ -273,7 +274,7 @@
                       {/if}
                     </td>
                     <td>{formatDuration(row.durationS)}</td>
-                    <td class="xrun-count">{row.xrunCount.toLocaleString()}</td>
+                    <td class="xrun-count">{formatNumber(row.xrunCount)}</td>
                     <td>{reasonLabel(row)}</td>
                     <td><span class:bad={row.xrunCount > 0} class="status-pill">{row.xrunCount > 0 ? 'Degraded' : 'Clean'}</span></td>
                   </tr>
@@ -281,7 +282,7 @@
               </tbody>
             </table>
           </div>
-          {#if filteredTotal > TABLE_LIMIT}<p class="table-note">Showing the newest {TABLE_LIMIT} of {filteredTotal.toLocaleString()} matching recordings.</p>{/if}
+          {#if filteredTotal > TABLE_LIMIT}<p class="table-note">Showing the newest {formatNumber(TABLE_LIMIT)} of {formatNumber(filteredTotal)} matching recordings.</p>{/if}
         {/if}
       </section>
     {/if}

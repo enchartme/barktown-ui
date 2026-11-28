@@ -1,3 +1,4 @@
+import { formatNumber } from './number-format.js';
 import { writable } from 'svelte/store';
 import { PUBLIC_API_BASE } from './utils.js';
 
@@ -63,9 +64,9 @@ export function formatHitMetadataStats(metadata, durationSec) {
     hitMetadataStats(metadata, durationSec);
   const confidenceTag = maximumConfidence >= 0.995
     ? 'C1'
-    : `C${maximumConfidence.toFixed(2)}`;
+    : `C${formatNumber(maximumConfidence, 2)}`;
 
-  return `${confidenceTag} D${density}% W${hitCount} La${maximumLoudness.toFixed(1)} Lm${meanLoudness.toFixed(1)}`;
+  return `${confidenceTag} D${formatNumber(density)}% W${formatNumber(hitCount)} La${formatNumber(maximumLoudness, 1)} Lm${formatNumber(meanLoudness, 1)}`;
 }
 
 /** @param {{id?: string, filename?: string, sampleId?: string | null, label?: string, time?: string}} entry */
@@ -135,7 +136,7 @@ export function formatAudioPanelStats(metadata, durationSec, filteredCount = nul
   if (!metadata) return '';
   const { hitCount, maximumLoudness, meanLoudness, density } =
     hitMetadataStats(metadata, durationSec);
-  return `Barks: ${hitCount}${filteredCount === null ? '' : ` (${filteredCount} filtered)`}, Density: ${density}%, Loudness Peak: ${maximumLoudness.toFixed(1)}x, Mean: ${meanLoudness.toFixed(1)}x`;
+  return `Barks: ${formatNumber(hitCount)}${filteredCount === null ? '' : ` (${formatNumber(filteredCount)} filtered)`}, Density: ${formatNumber(density)}%, Loudness Peak: ${formatNumber(maximumLoudness, 1)}x, Mean: ${formatNumber(meanLoudness, 1)}x`;
 }
 
 /**
@@ -178,7 +179,7 @@ export function formatAudioPanelAnalysisParameters(metadata) {
 }
 
 function formatSeconds(value) {
-  return value === null || value === undefined || value === '' ? value : `${value}s`;
+  return value === null || value === undefined || value === '' ? value : `${formatNumber(value)}s`;
 }
 
 function formatLocalAnalysisDate(value) {

@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { fetchDiarySummary } from '$lib/diary-summary.js';
@@ -68,8 +69,8 @@
       simple: 'This project started out of a frustration of not being able to rest at home. The problem did not appear yesterday. See the history below:',
       more: 'The dog disturbances were collected manually since 2021 and piled up on hard drives. Only in February 2026 have we made the Barktown visual diary to browse and listen the collected recordings. Later same year we acquired hardware and built the automatic AI detector.',
       technical: [
-        '4120 manual disturbance text notes',
-        '1295 manual disturbance audio recordings of disturbances'
+        `${formatNumber(4120)} manual disturbance text notes`,
+        `${formatNumber(1295)} manual disturbance audio recordings of disturbances`
       ],
       media: '/images/six-years-of-bark-disturbance.png',
       mediaNote: 'Project timeline',
@@ -98,9 +99,9 @@
       label: 'Training',
       title: 'How the AI was trained',
       simple: "YAMNet is a pre-trained deep learning model by Google that identifies 521 different audio event classes — like animal sounds, speech, or sirens — from an audio waveform. The Barktown learning happens on top of YAMNet's existing learning. This is called transfer learning. It lets us train a useful local detector with far fewer examples than would be required to build an audio model from scratch. An analogy would be hiring someone who already understands sound generally, then training them on the specific distinction that matters at this location.", 
-      more: "Barktown uses YAMNet model as a sound-feature extractor: each short audio fragment is converted into a 1024-number “sound fingerprint” describing patterns YAMNet has already learned, such as rhythm, pitch and texture. Our labelled samples then train a much smaller Barktown classifier to interpret those fingerprints and learn the local distinction between bark/yap and everything else, with confusing negative examples deliberately included",      
+      more: `Barktown uses YAMNet model as a sound-feature extractor: each short audio fragment is converted into a ${formatNumber(1024)}-number “sound fingerprint” describing patterns YAMNet has already learned, such as rhythm, pitch and texture. Our labelled samples then train a much smaller Barktown classifier to interpret those fingerprints and learn the local distinction between bark/yap and everything else, with confusing negative examples deliberately included`,
       technical: [
-        'Audio is mixed to mono, resampled to 16 kHz and passed through YAMNet. Its overlapping analysis windows are approximately 0.96 seconds long with a 0.48-second step, each producing a 1024-dimensional embedding. The custom part is that Barktown then trains a small classifier that combines 128 learned sound patterns and produces a single score for how bark-like the audio is. During training, some signals are randomly hidden to reduce memorisation. Training stops when performance on held-back audio no longer improves. The final cutoff balances detected barks against false alarms, favouring fewer false alarms when undecided.'
+        `Audio is mixed to mono, resampled to 16 kHz and passed through YAMNet. Its overlapping analysis windows are approximately 0.96 seconds long with a 0.48-second step, each producing a ${formatNumber(1024)}-dimensional embedding. The custom part is that Barktown then trains a small classifier that combines 128 learned sound patterns and produces a single score for how bark-like the audio is. During training, some signals are randomly hidden to reduce memorisation. Training stops when performance on held-back audio no longer improves. The final cutoff balances detected barks against false alarms, favouring fewer false alarms when undecided.`
       ],
       links: [
         {label: "YAMNet", href: "https://www.kaggle.com/models/google/yamnet"}, 
@@ -230,9 +231,9 @@
           alt="Angie adjusting the Barktown field instrument outdoors"
         />
         <dl class="evidence-facts">
-          <div><dt>Barks detected</dt><dd>{summaryState === 'ready' ? recentSummary.barks.toLocaleString() : summaryState === 'error' ? 'Unavailable' : 'Loading…'}</dd></div>
+          <div><dt>Barks detected</dt><dd>{summaryState === 'ready' ? formatNumber(recentSummary.barks) : summaryState === 'error' ? 'Unavailable' : 'Loading…'}</dd></div>
           <div><dt>Time barking</dt><dd>{summaryState === 'ready' ? formatDisturbedTime(recentSummary.disturbedTimeSec) : summaryState === 'error' ? 'Unavailable' : 'Loading…'}</dd></div>
-          <div><dt>Disturbance events</dt><dd>{summaryState === 'ready' ? recentSummary.records.toLocaleString() : summaryState === 'error' ? 'Unavailable' : 'Loading…'}</dd></div>
+          <div><dt>Disturbance events</dt><dd>{summaryState === 'ready' ? formatNumber(recentSummary.records) : summaryState === 'error' ? 'Unavailable' : 'Loading…'}</dd></div>
           <div><dt>Counting since</dt><dd>1 August 2026</dd></div>
         </dl>
       </div>

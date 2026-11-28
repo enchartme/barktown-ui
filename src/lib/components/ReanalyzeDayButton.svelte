@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { PRIVATE_API_BASE } from '$lib/utils.js';
   let { date, disabled = false } = $props();
@@ -45,7 +46,7 @@
     <span class="confirmation">
       <span>Re-analyze day?</span>
       <label class="threshold" title="Classifier threshold for this day's re-analysis only">
-        <span>t {threshold.toFixed(2)}</span>
+        <span>t {formatNumber(threshold, 2)}</span>
         <input type="range" min="0.8" max="1" step="0.01" bind:value={threshold}
           disabled={disabled || !$reanalysis.available || $reanalysis.active}
           aria-label={`Re-analysis classifier threshold for ${date}`} />
@@ -67,7 +68,7 @@
   {/if}
   {#if job?.active}
     <span class="progress" role="status">
-      {job.preparing ? 'Preparing…' : `Processing ${job.completed}/${job.total}`}
+      {job.preparing ? 'Preparing…' : `Processing ${formatNumber(job.completed)}/${formatNumber(job.total)}`}
       {#if job.failed} · {job.failed} failed{/if}
       {#if job.skipped} · {job.skipped} without source{/if}
     </span>

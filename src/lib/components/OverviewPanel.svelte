@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { max } from 'd3-array';
 
   /** @type {{ entries: import('$lib/types').Entry[] }} */
@@ -155,7 +156,7 @@
                 height={(bar.count / row.maxCount) * CHART_H}
                 fill={bar.color}
               >
-                <title>{bar.label}: {bar.count} event{bar.count !== 1 ? 's' : ''}</title>
+                <title>{bar.label}: {formatNumber(bar.count)} event{bar.count !== 1 ? 's' : ''}</title>
               </rect>
             {/if}
           {/each}

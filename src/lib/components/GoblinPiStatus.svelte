@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { env } from '$env/dynamic/public';
   import { onMount, onDestroy } from 'svelte';
   import { goblinHostLabel, resolveGoblinBaseUrl } from '$lib/goblin-config.js';
@@ -480,37 +481,37 @@
       { path: 'alive',         label: 'Alive',       fmt: v => v ? 'yes' : 'no' },
       { path: 'now',           label: 'Server time', fmt: v => new Date(v).toLocaleTimeString() },
       { path: 'boot_time',     label: 'Boot time',   fmt: v => new Date(v).toLocaleString() },
-      { path: 'uptime_s',      label: 'Uptime',      fmt: v => `${Math.floor(v/3600)}h ${Math.floor((v%3600)/60)}m ${(v%60)|0}s` },
-      { path: 'heartbeat_seq', label: 'Heartbeat',   fmt: v => String(v) },
+      { path: 'uptime_s',      label: 'Uptime',      fmt: v => `${formatNumber(Math.floor(v/3600))}h ${Math.floor((v%3600)/60)}m ${(v%60)|0}s` },
+      { path: 'heartbeat_seq', label: 'Heartbeat',   fmt: v => formatNumber(v) },
     ]},
     { title: 'Audio', rows: [
       { path: 'audio.usb_mic_present',   label: 'USB mic',       fmt: v => v ? 'yes' : 'no' },
       { path: 'audio.streaming',         label: 'Streaming',     fmt: v => v ? 'yes' : 'no' },
       { path: 'audio.connection_state',  label: 'Connection',    fmt: v => String(v) },
       { path: 'audio.device_name',       label: 'Device',        fmt: v => String(v) },
-      { path: 'audio.sample_rate',       label: 'Sample rate',   fmt: v => `${(v/1000).toFixed(0)} kHz` },
-      { path: 'audio.rms_now',           label: 'RMS now',       fmt: v => v.toFixed(4) },
-      { path: 'audio.rms_mean_10s',      label: 'RMS mean 10s',  fmt: v => v.toFixed(4) },
-      { path: 'audio.rms_dbfs_now',      label: 'RMS dBFS now',  fmt: v => `${v.toFixed(1)} dBFS` },
-      { path: 'audio.rms_dbfs_mean_10s', label: 'RMS dBFS 10s',  fmt: v => `${v.toFixed(1)} dBFS` },
-      { path: 'audio.peak_now',          label: 'Peak now',      fmt: v => v.toFixed(4) },
-      { path: 'audio.clip_rate_10s',     label: 'Clip rate 10s', fmt: v => v.toFixed(6) },
-      { path: 'audio.xruns_last_hour',   label: 'XRuns/hour',    fmt: v => String(v) },
-      { path: 'audio.xruns_total',       label: 'XRuns/session', fmt: v => String(v) },
+      { path: 'audio.sample_rate',       label: 'Sample rate',   fmt: v => `${formatNumber(v / 1000, 0)} kHz` },
+      { path: 'audio.rms_now',           label: 'RMS now',       fmt: v => formatNumber(v, 4) },
+      { path: 'audio.rms_mean_10s',      label: 'RMS mean 10s',  fmt: v => formatNumber(v, 4) },
+      { path: 'audio.rms_dbfs_now',      label: 'RMS dBFS now',  fmt: v => `${formatNumber(v, 1)} dBFS` },
+      { path: 'audio.rms_dbfs_mean_10s', label: 'RMS dBFS 10s',  fmt: v => `${formatNumber(v, 1)} dBFS` },
+      { path: 'audio.peak_now',          label: 'Peak now',      fmt: v => formatNumber(v, 4) },
+      { path: 'audio.clip_rate_10s',     label: 'Clip rate 10s', fmt: v => formatNumber(v, 6) },
+      { path: 'audio.xruns_last_hour',   label: 'XRuns/hour',    fmt: v => formatNumber(v) },
+      { path: 'audio.xruns_total',       label: 'XRuns/session', fmt: v => formatNumber(v) },
       { path: 'audio.last_error',        label: 'Last error',    fmt: v => String(v) },
     ]},
     { title: 'CPU', rows: [
-      { path: 'cpu.percent_1s',       label: 'CPU % now',      fmt: v => `${v.toFixed(1)} %` },
-      { path: 'cpu.percent_peak_60s', label: 'CPU % peak 60s', fmt: v => `${v.toFixed(1)} %` },
-      { path: 'cpu.temp_c',           label: 'Temp',           fmt: v => `${v.toFixed(1)} °C` },
+      { path: 'cpu.percent_1s',       label: 'CPU % now',      fmt: v => `${formatNumber(v, 1)} %` },
+      { path: 'cpu.percent_peak_60s', label: 'CPU % peak 60s', fmt: v => `${formatNumber(v, 1)} %` },
+      { path: 'cpu.temp_c',           label: 'Temp',           fmt: v => `${formatNumber(v, 1)} °C` },
       { path: 'cpu.throttled_bits',   label: 'Throttled',      fmt: fmtThrottled },
     ]},
     { title: 'RAM', rows: [
-      { path: 'ram.used_mb',     label: 'RAM used',     fmt: v => `${v.toFixed(0)} MB` },
-      { path: 'ram.peak_60s_mb', label: 'RAM peak 60s', fmt: v => `${v.toFixed(0)} MB` },
+      { path: 'ram.used_mb',     label: 'RAM used',     fmt: v => `${formatNumber(v, 0)} MB` },
+      { path: 'ram.peak_60s_mb', label: 'RAM peak 60s', fmt: v => `${formatNumber(v, 0)} MB` },
     ]},
     { title: 'Disk', rows: [
-      { path: 'disk.sd_free_mb', label: 'SD free', fmt: v => `${v.toFixed(0)} MB` },
+      { path: 'disk.sd_free_mb', label: 'SD free', fmt: v => `${formatNumber(v, 0)} MB` },
     ]},
     { title: 'Network', rows: [
       { path: 'net.online',            label: 'Online',       fmt: v => v ? 'yes' : 'no' },
@@ -524,7 +525,7 @@
   const PIPELINE_SUMMARY_ROWS = [
     { path: 'pipeline.state',             label: 'Service state', fmt: v => v ?? '—' },
     { path: 'pipeline.model_version',     label: 'Model version', fmt: v => v ?? '—' },
-    { path: 'pipeline.bark_events_today', label: 'Barks today',   fmt: v => String(v) },
+    { path: 'pipeline.bark_events_today', label: 'Barks today',   fmt: v => formatNumber(v) },
   ];
 
   function progressPercent(value, max) {
@@ -537,7 +538,7 @@
   function fmtScadaSeconds(value) {
     const seconds = Number(value);
     if (!Number.isFinite(seconds)) return '—';
-    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
+    return `${seconds < 10 ? formatNumber(seconds, 1) : formatNumber(Math.round(seconds))}s`;
   }
 
   function uploadStateLabel(channel) {
@@ -561,9 +562,9 @@
       return `retry in ${fmtScadaSeconds(channel.retry_in_s)}`;
     }
     if (channel.attempt != null && channel.max_attempts != null) {
-      return `attempt ${channel.attempt}/${channel.max_attempts}`;
+      return `attempt ${formatNumber(channel.attempt)}/${formatNumber(channel.max_attempts)}`;
     }
-    if (channel.hit_count != null) return `${channel.hit_count} hits`;
+    if (channel.hit_count != null) return `${formatNumber(channel.hit_count)} hits`;
     return channel.detail ?? '';
   }
 
@@ -794,7 +795,7 @@
                 <div class="stage-state">{assemblerState}</div>
                 <div class="score-readout">
                   <span>Max score · 10s</span>
-                  <strong>{maxScore10s != null ? Number(maxScore10s).toFixed(3) : '—'}</strong>
+                  <strong>{maxScore10s != null ? formatNumber(Number(maxScore10s), 3) : '—'}</strong>
                 </div>
                 <div class="score-track" aria-hidden="true">
                   <span style:width={`${progressPercent(maxScore10s, 1)}%`}></span>
@@ -804,7 +805,7 @@
                   <div class="instrument">
                     <div class="instrument-label">
                       <span>Confirmed hits</span>
-                      <strong>{confirmedHits} / {confirmationHits || '—'}</strong>
+                      <strong>{formatNumber(confirmedHits)} / {confirmationHits ? formatNumber(confirmationHits) : '—'}</strong>
                     </div>
                     <div
                       class="instrument-track hits-track"
@@ -892,7 +893,7 @@
                 <header class="stage-header">
                   <span class="stage-number">03</span>
                   <span class="stage-title">Upload</span>
-                  <span class="queue-depth">Q {uploadStatus?.queue_depth ?? 0}</span>
+                  <span class="queue-depth">Q {formatNumber(uploadStatus?.queue_depth ?? 0)}</span>
                 </header>
 
                 <div class="upload-channel" title={audioUploadStatus?.detail ?? ''}>
@@ -915,11 +916,11 @@
 
                 <div class="upload-counters">
                   <div class:counter-alert={uploadsFailed24h > 0}>
-                    <strong>{uploadsFailed24h}</strong>
+                    <strong>{formatNumber(uploadsFailed24h)}</strong>
                     <span>Failed · 24h</span>
                   </div>
                   <div class:counter-warn={uploadsRetried24h > 0}>
-                    <strong>{uploadsRetried24h}</strong>
+                    <strong>{formatNumber(uploadsRetried24h)}</strong>
                     <span>Retried · 24h</span>
                   </div>
                 </div>
@@ -1004,10 +1005,10 @@
                   </div>
                   <div class="param-sync" class:match={matches} class:mismatch={!matches}>
                     {#if matches}
-                      <span title="Database and Goblin memory match">✅ DB and Goblin: {row.currentValue}</span>
+                      <span title="Database and Goblin memory match">✅ DB and Goblin: {formatNumber(row.currentValue)}</span>
                     {:else}
                       <span title="Database and Goblin memory do not match">
-                        ❓ DB: {row.currentValue} · Goblin: {goblinValue ?? 'unavailable'}
+                        ❓ DB: {formatNumber(row.currentValue)} · Goblin: {goblinValue == null ? 'unavailable' : formatNumber(goblinValue)}
                       </span>
                     {/if}
                   </div>
@@ -1024,7 +1025,7 @@
                 <td class="td-hint param-hint">
                   <span>{row.description}</span>
                   <span class="param-range">
-                    Default {row.defaultValue} · allowed {row.minValue}–{row.maxValue}
+                    Default {formatNumber(row.defaultValue)} · allowed {formatNumber(row.minValue)}–{formatNumber(row.maxValue)}
                   </span>
                 </td>
               </tr>
@@ -1091,7 +1092,7 @@
             <div class="recording-live">
               <span class="rec-dot"></span>
               <span class="rec-label">REC</span>
-              <span class="rec-countdown">{recordStatus.seconds_remaining}s</span>
+              <span class="rec-countdown">{formatNumber(recordStatus.seconds_remaining)}s</span>
             </div>
             <button class="action-btn stop-btn" onclick={stopRecording}>Stop</button>
 

@@ -1,4 +1,5 @@
 <script>
+  import { formatNumber } from '$lib/number-format.js';
   import { filteredHitMetadataById as hitMetadataById, markedHitMetadataById } from '$lib/settings.js';
   import { reanalysis, reanalysisFetch } from '$lib/reanalysis.js';
   import { onMount, tick } from 'svelte';
@@ -1058,7 +1059,7 @@
           class="reanalyze-threshold"
           title="Classifier threshold for this re-analysis only"
         >
-          <span>t {reanalyzeThreshold.toFixed(2)}</span>
+          <span>t {formatNumber(reanalyzeThreshold, 2)}</span>
           <input
             type="range"
             min="0.8"
@@ -1170,7 +1171,7 @@
   {/if}
 
   {#if historicalJob?.active}
-    <p class="panel-analysis" role="status">Historical import: {historicalJob.stage ?? 'starting'}{historicalJob.eventTotal ? ` (${historicalJob.eventsCompleted ?? 0}/${historicalJob.eventTotal})` : ''}…</p>
+    <p class="panel-analysis" role="status">Historical import: {historicalJob.stage ?? 'starting'}{historicalJob.eventTotal ? ` (${formatNumber(historicalJob.eventsCompleted ?? 0)}/${formatNumber(historicalJob.eventTotal)})` : ''}…</p>
   {:else if historicalJob?.message}
     <p class="panel-analysis" role="status">{historicalJob.message}</p>
   {/if}
@@ -1182,12 +1183,12 @@
       <span class="delta-distribution" title={deltaDistribution.title}>
         <span>Labeling Δ</span>
         {#if deltaDistribution.count}
-          <span class="delta-chart" role="img" aria-label="Delta histogram: {deltaDistribution.count} windows, negatives combined in the first bar, then 0 to 1 in steps of 0.1">{deltaDistribution.chart}</span>
+          <span class="delta-chart" role="img" aria-label="Delta histogram: {formatNumber(deltaDistribution.count)} windows, negatives combined in the first bar, then 0 to 1 in steps of 0.1">{deltaDistribution.chart}</span>
         {:else}
           <span aria-label="Delta histogram unavailable">—</span>
         {/if}
-        <span aria-label="Delta mean">μ {deltaDistribution.mean === null ? '—' : deltaDistribution.mean.toFixed(2)}</span>
-        <span aria-label="Delta standard deviation">σ {deltaDistribution.standardDeviation === null ? '—' : deltaDistribution.standardDeviation.toFixed(2)}</span>
+        <span aria-label="Delta mean">μ {deltaDistribution.mean === null ? '—' : formatNumber(deltaDistribution.mean, 2)}</span>
+        <span aria-label="Delta standard deviation">σ {deltaDistribution.standardDeviation === null ? '—' : formatNumber(deltaDistribution.standardDeviation, 2)}</span>
       </span>
       {/if}
     </p>
@@ -1300,7 +1301,7 @@
                       vector-effect="non-scaling-stroke"
                       paint-order="stroke fill"
                     >
-                      <title>Hit {i + 1}/{waveformHitMetadata.timestamps.length} · {label}: {score.toFixed(2)}</title>
+                      <title>Hit {formatNumber(i + 1)}/{formatNumber(waveformHitMetadata.timestamps.length)} · {label}: {formatNumber(score, 2)}</title>
                     </polygon>
                   {/if}
                 {/each}
@@ -1390,13 +1391,13 @@
             <div class="hit-summary">
               {#if hoveredHit.filtered}<div class="filtered-hit-note">Filtered</div>{/if}
               <div class="hit-score-row">
-                <span>{hoveredHit.confidence.toFixed(2)} Confidence</span>
+                <span>{formatNumber(hoveredHit.confidence, 2)} Confidence</span>
                 <span class="hit-score-track" aria-hidden="true">
                   <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, hoveredHit.confidence)) * 100}%"></span>
                 </span>
               </div>
               <div class="hit-score-row">
-                <span>{hoveredHit.loudness.toFixed(1)}x Loudness</span>
+                <span>{formatNumber(hoveredHit.loudness, 1)}x Loudness</span>
                 <span class="hit-score-track" aria-hidden="true">
                   <span class="hit-score-bar" style:width="{hitLoudnessFraction(hoveredHit.loudness) * 100}%"></span>
                 </span>
@@ -1405,8 +1406,8 @@
             {#if hoveredHit.scores.length}
               <div class="hit-label-scores">
                 {#each hoveredHit.scores as [label, score] (label)}
-                  <div class="hit-score-row" style:color={sampleLabelColor(label)} aria-label="{label}: {score.toFixed(2)}">
-                    <span>{score.toFixed(2)} {label}</span>
+                  <div class="hit-score-row" style:color={sampleLabelColor(label)} aria-label="{label}: {formatNumber(score, 2)}">
+                    <span>{formatNumber(score, 2)} {label}</span>
                     <span class="hit-score-track" aria-hidden="true">
                       <span class="hit-score-bar" style:width="{Math.max(0, Math.min(1, score)) * 100}%"></span>
                     </span>
