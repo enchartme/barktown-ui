@@ -1,4 +1,4 @@
-import { PUBLIC_API_BASE } from './utils.js';
+import { addDays, PUBLIC_API_BASE } from './utils.js';
 
 const REASONS = [
   ['inputOverflowCount', 'Input overflow'],
@@ -39,10 +39,17 @@ export async function fetchDataQuality({
   }
 }
 
+function recordedMinutes(row) {
+  return Number.isFinite(row.durationS) && row.durationS > 0 ? row.durationS / 60 : 0;
+}
+
 export function summarizeDataQuality(rows) {
   const affected = rows.filter((row) => row.xrunCount > 0).length;
   const totalXruns = rows.reduce((sum, row) => sum + row.xrunCount, 0);
+  const totalMinutes = rows.reduce((sum, row) => sum + recordedMinutes(row), 0);
   return {
+    totalMinutes,
+    xrunsPerHour: totalMinutes > 0 ? totalXruns / (totalMinutes / 60) : null,
     recordings: rows.length,
     clean: rows.length - affected,
     affected,
@@ -51,19 +58,34 @@ export function summarizeDataQuality(rows) {
   };
 }
 
-export function dailyDataQuality(rows) {
+export function dailyDataQuality(rows, { startDate, endDate } = {}) {
   const byDate = new Map();
   for (const row of rows) {
     const date = row.recordingStartedAt?.slice(0, 10);
     if (!date) continue;
-    const day = byDate.get(date) ?? { date, recordings: 0, clean: 0, affected: 0, xruns: 0 };
+    const day = byDate.get(date) ?? { date, recordings: 0, clean: 0, affected: 0, xruns: 0, totalMinutes: 0, cleanMinutes: 0, affectedMinutes: 0 };
+    const minutes = recordedMinutes(row);
+    day.totalMinutes += minutes;
+    if (row.xrunCount > 0) day.affectedMinutes += minutes;
+    else day.cleanMinutes += minutes;
     day.recordings += 1;
     day.xruns += row.xrunCount;
     if (row.xrunCount > 0) day.affected += 1;
     else day.clean += 1;
     byDate.set(date, day);
   }
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const dates = [...byDate.keys()].sort();
+  const firstDate = startDate ?? dates[0];
+  const lastDate = endDate ?? dates.at(-1);
+  const days = [];
+  // Keep a calendar slot for every day, including dates with no quality rows.
+  for (let date = firstDate; date && date <= lastDate; date = addDays(date, 1)) {
+    days.push(byDate.get(date) ?? {
+      date, recordings: 0, clean: 0, affected: 0, xruns: 0,
+      totalMinutes: 0, cleanMinutes: 0, affectedMinutes: 0,
+    });
+  }
+  return days;
 }
 
 export function dataQualityReasons(rows) {

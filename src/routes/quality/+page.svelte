@@ -25,11 +25,15 @@
   let rangeDays = $state(30);
   let rowMode = $state('affected');
   let operatorAccess = $state(false);
+  let loadedBounds = $state({});
+  let chartWidth = $state(0);
 
   const summary = $derived(summarizeDataQuality(rows));
-  const daily = $derived(dailyDataQuality(rows));
+  const daily = $derived(dailyDataQuality(rows, loadedBounds));
   const reasons = $derived(dataQualityReasons(rows));
-  const maxDailyRecordings = $derived(Math.max(1, ...daily.map((day) => day.recordings)));
+  const maxDailyMinutes = $derived(Math.max(1, ...daily.map((day) => day.totalMinutes)));
+  const chartBarWidth = $derived(Math.min(22, chartWidth / Math.max(1, daily.length) * 0.7));
+  const incidentHeadroom = $derived(Math.max(0, ...daily.map((day) => day.xruns * (Math.min(6, chartBarWidth) + 2))) + 10);
   const maxReasonCount = $derived(Math.max(1, ...reasons.map((reason) => reason.count)));
   const filteredRows = $derived(
     (rowMode === 'affected' ? rows.filter((row) => row.xrunCount > 0) : rows).slice(0, TABLE_LIMIT),
@@ -60,6 +64,7 @@
         endDate: rangeDays == null ? undefined : endDate,
         signal: AbortSignal.timeout(15000),
       });
+      loadedBounds = { startDate, endDate: rangeDays == null ? undefined : endDate };
     } catch (error) {
       rows = [];
       loadError = error?.message ?? 'Failed to load signal quality';
@@ -72,10 +77,6 @@
     if (rangeDays === days || loading) return;
     rangeDays = days;
     void loadQuality();
-  }
-
-  function cleanRateLabel() {
-    return summary.cleanRate == null ? '—' : `${formatNumber(summary.cleanRate * 100, 1)}%`;
   }
 
   function formatTimestamp(value) {
@@ -169,9 +170,9 @@
     {:else}
       <section class="summary-grid" aria-label="Quality summary">
         <article>
-          <span>Clean recordings</span>
-          <strong>{cleanRateLabel()}</strong>
-          <small>{formatNumber(summary.clean)} of {formatNumber(summary.recordings)}</small>
+          <span>XRUNs per hour</span>
+          <strong>{summary.xrunsPerHour == null ? '—' : formatNumber(summary.xrunsPerHour, 3)}</strong>
+          <small>{formatNumber(summary.totalXruns)} incidents / {formatNumber(summary.totalMinutes / 60, 1)} h recorded</small>
         </article>
         <article class:warn={summary.affected > 0}>
           <span>Affected recordings</span>
@@ -184,8 +185,8 @@
           <small>inside recording windows</small>
         </article>
         <article>
-          <span>Recordings measured</span>
-          <strong>{formatNumber(summary.recordings)}</strong>
+          <span>Total time recorded</span>
+          <strong>{formatNumber(summary.totalMinutes, 1)} <small>min</small></strong>
           <small>{rangeDays == null ? 'all available records' : `last ${rangeDays} days`}</small>
         </article>
       </section>
@@ -194,33 +195,32 @@
         <article class="panel timeline-panel">
           <header>
             <div><p class="panel-kicker">Daily outcome</p><h2>Recording continuity</h2></div>
-            <div class="legend"><span><i class="clean-dot"></i>Clean</span><span><i class="affected-dot"></i>XRUN</span></div>
+            <div class="legend"><span><i class="minutes-swatch"></i>Recorded minutes</span><span><i class="incident-dot"></i>XRUN incident</span></div>
           </header>
           <div class="chart-wrap">
-            <svg class="daily-chart" viewBox="0 0 1000 260" role="img" aria-label="Clean and XRUN-affected recordings by day">
-              <line x1="38" y1="218" x2="980" y2="218" class="axis" />
-              {#each daily as day, index}
-                {@const slot = 942 / Math.max(1, daily.length)}
-                {@const width = Math.max(3, Math.min(28, slot - 3))}
-                {@const x = 38 + index * slot + (slot - width) / 2}
-                {@const scale = 172 / maxDailyRecordings}
-                {@const cleanHeight = day.clean * scale}
-                {@const affectedHeight = day.affected * scale}
-                <g>
-                  <title>{day.date}: {formatNumber(day.clean)} clean, {formatNumber(day.affected)} affected, {formatNumber(day.xruns)} XRUNs</title>
-                  <rect x={x} y={218 - cleanHeight} width={width} height={cleanHeight} class="bar-clean" />
-                  <rect x={x} y={218 - cleanHeight - affectedHeight} width={width} height={affectedHeight} class="bar-affected" />
-                </g>
-              {/each}
-              {#if daily.length > 0}
-                <text x="38" y="247" text-anchor="start">{shortDate(daily[0].date)}</text>
-                {#if daily.length > 2}
-                  <text x="509" y="247" text-anchor="middle">{shortDate(daily[Math.floor(daily.length / 2)].date)}</text>
+            <div class="daily-chart" role="img" aria-label="Recorded minutes per day; each red dot above a bar is one XRUN incident" style={`--incident-headroom: ${incidentHeadroom}px`}>
+              <div class="chart-scale" aria-hidden="true"><span>{formatNumber(maxDailyMinutes, 1)} min</span><span>0</span></div>
+              <div class="daily-bars" bind:clientWidth={chartWidth}>
+                {#each daily as day}
+                  {@const barHeight = day.totalMinutes / maxDailyMinutes * 172}
+                  <div class="day-column" title={`${day.date}: ${formatNumber(day.totalMinutes, 1)} min recorded, ${formatNumber(day.xruns)} XRUN incidents${day.recordings ? '' : ' (no quality records)'}`}>
+                    <div class="day-bar" style={`height: ${barHeight}px`}></div>
+                    <div class="incident-dots" style={`bottom: ${barHeight + 6}px`}>
+                      {#each { length: day.xruns } as _}<i class="incident-dot"></i>{/each}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+              <div class="chart-dates" aria-hidden="true">
+                {#if daily.length}
+                  <span>{shortDate(daily[0].date)}</span>
+                  {#if daily.length > 2}<span>{shortDate(daily[Math.floor(daily.length / 2)].date)}</span>{/if}
+                  {#if daily.length > 1}<span>{shortDate(daily.at(-1).date)}</span>{/if}
                 {/if}
-                <text x="980" y="247" text-anchor="end">{shortDate(daily.at(-1).date)}</text>
-              {/if}
-            </svg>
+              </div>
+            </div>
           </div>
+          <p class="footnote">Bars show total recorded minutes. Each red dot represents one XRUN incident.</p>
         </article>
 
         <article class="panel reasons-panel">
@@ -332,15 +332,21 @@
   .visual-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 0.8rem; margin-bottom: 0.8rem; }
   .panel { padding: 1.1rem; }
   .panel > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-  .legend { display: flex; gap: 0.8rem; color: #73736e; font-size: var(--font-size-tiny); }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.8rem; color: #73736e; font-size: var(--font-size-tiny); }
   .legend span { display: flex; align-items: center; gap: 0.3rem; }
   .legend i { width: 9px; height: 9px; border-radius: 2px; }
-  .clean-dot { background: #83a78b; } .affected-dot { background: #c75d49; }
-  .chart-wrap { width: 100%; overflow: hidden; }
-  .daily-chart { display: block; width: 100%; height: 260px; }
-  .daily-chart text { fill: #777; font-family: var(--font-tiny); font-size: 18px; }
-  .axis { stroke: #d8d7d0; stroke-width: 1; }
-  .bar-clean { fill: #83a78b; } .bar-affected { fill: #c75d49; }
+  .minutes-swatch { background: #83a78b; }
+  .chart-wrap { width: 100%; }
+  .daily-chart { position: relative; padding-left: 60px; padding-top: var(--incident-headroom); }
+  .chart-scale { position: absolute; left: 0; top: var(--incident-headroom); height: 172px; display: flex; flex-direction: column; justify-content: space-between; color: #777; font-family: var(--font-tiny); font-size: var(--font-size-tiny); }
+  .daily-bars { display: flex; height: 172px; border-bottom: 1px solid #d8d7d0; }
+  .day-column { position: relative; display: flex; align-items: end; justify-content: center; flex: 1; min-width: 0; }
+  .day-bar { width: min(22px, 70%); background: #83a78b; }
+  .incident-dots { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 2px; width: min(6px, 70%); }
+  .incident-dot { display: block; border-radius: 50%; background: #c7352a; }
+  .incident-dots .incident-dot { width: 100%; aspect-ratio: 1; flex-shrink: 0; }
+  .legend i.incident-dot { flex: 0 0 4px; width: 4px; height: 4px; }
+  .chart-dates { display: flex; justify-content: space-between; gap: 1rem; padding-top: 10px; color: #777; font-family: var(--font-tiny); font-size: var(--font-size-tiny); }
   .reason-list { display: flex; flex-direction: column; gap: 1rem; }
   .reason-row > div:first-child { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.28rem; }
   .reason-row strong { font-family: var(--font-data); font-weight: 500; }
